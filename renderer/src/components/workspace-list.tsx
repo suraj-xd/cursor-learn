@@ -65,29 +65,22 @@ export function WorkspaceList() {
     <div className="space-y-8 pt-8">
       {/* Projects with conversations */}
       {projectsWithConversations.length > 0 && (
-        <div className='border border-border'>
-          {/* <CardHeader>
-            <CardTitle>Projects with Conversations</CardTitle>
-            <CardDescription>
-              {projectsWithConversations.length} project{projectsWithConversations.length !== 1 ? 's' : ''} with chat history
-            </CardDescription>
-          </CardHeader> */}
-          <CardContent className='p-0' >
+        <div className='rounded-none border border-border bg-card' >
+       
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className='font-mono uppercase' >Project</TableHead>
+                  <TableHead className='font-mono uppercase' >Name</TableHead>
                   <TableHead className='font-mono uppercase' >Conversations</TableHead>
                   <TableHead className='font-mono uppercase' >Last Modified</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody >
                 {projectsWithConversations.map((project) => (
                   <TableRow key={project.id} className="hover:bg-accent/50">
                     <TableCell>
                       <Link 
                         href={`/workspace?id=${project.id}`}
-                        className="text-blue-600 hover:underline font-medium"
                       >
                         {project.name}
                       </Link>
@@ -104,7 +97,6 @@ export function WorkspaceList() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
         </div>
       )}
 

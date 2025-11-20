@@ -117,7 +117,7 @@ export default function WorkspaceClient() {
   const selectedChat = state.tabs.find(tab => tab.id === state.selectedId)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2 mx-4 border border-border rounded-[8px] p-4 pb-0">
       <div className="flex items-center justify-between">
         <div className="flex justify-between w-full">
           <Button variant="ghost" size="sm" asChild className="gap-2">
@@ -133,18 +133,18 @@ export default function WorkspaceClient() {
         </div>
       </div>
 
-      <div className="bg-muted/50 dark:bg-muted/10 p-6 rounded-lg border">
-        <h2 className="font-semibold mb-2">{state.projectName}</h2>
-        <p className="text-sm text-muted-foreground">
+      <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border flex justify-start items-center gap-2">
+        <h2 className="font-semibold font-mono uppercase">{state.projectName}</h2>
+        <p className="text-xs text-accent uppercase font-mono">
           {state.tabs.length} conversations
         </p>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-12 gap-4">
         <div className="col-span-3 space-y-4">
           {state.tabs.length > 0 && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">Conversations</h2>
+              {/* <h2 className="text-md font-bold">Conversations</h2> */}
               <div className="space-y-2">
                 {state.tabs.map((tab) => (
                   <Button
@@ -158,7 +158,7 @@ export default function WorkspaceClient() {
                       <div className="font-medium truncate">
                         {tab.title || `Chat ${tab.id.slice(0, 8)}`}
                       </div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-xs uppercase font-mono">
                         {new Date(tab.timestamp).toLocaleString()}
                       </div>
                     </div>
@@ -171,17 +171,17 @@ export default function WorkspaceClient() {
 
         <div className="col-span-9">
           {selectedChat ? (
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">
+            <div className="">
+              <div className="flex items-center justify-between mb-4 mt-2">
+                <h2 className="text-lg">
                   {selectedChat.title}
                 </h2>
-                <Badge variant="default">
+                {/* <Badge variant="default">
                   Conversation
-                </Badge>
+                </Badge> */}
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[calc(100vh-230px)] overflow-y-auto">
                 {selectedChat.bubbles
                   .filter(bubble => bubble.text && bubble.text.trim().length > 0)
                   .map((bubble, index) => (
@@ -231,7 +231,7 @@ export default function WorkspaceClient() {
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           ) : (
             <Card className="p-6">
               <div className="text-center text-muted-foreground">
