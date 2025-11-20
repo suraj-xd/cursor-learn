@@ -62,23 +62,23 @@ export function WorkspaceList() {
   const projectsWithoutConversations = projects.filter(project => project.conversationCount === 0)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pt-8">
       {/* Projects with conversations */}
       {projectsWithConversations.length > 0 && (
-        <Card>
-          <CardHeader>
+        <div className='border border-border'>
+          {/* <CardHeader>
             <CardTitle>Projects with Conversations</CardTitle>
             <CardDescription>
               {projectsWithConversations.length} project{projectsWithConversations.length !== 1 ? 's' : ''} with chat history
             </CardDescription>
-          </CardHeader>
-          <CardContent>
+          </CardHeader> */}
+          <CardContent className='p-0' >
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Conversations</TableHead>
-                  <TableHead>Last Modified</TableHead>
+                  <TableHead className='font-mono uppercase' >Project</TableHead>
+                  <TableHead className='font-mono uppercase' >Conversations</TableHead>
+                  <TableHead className='font-mono uppercase' >Last Modified</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -105,7 +105,7 @@ export function WorkspaceList() {
               </TableBody>
             </Table>
           </CardContent>
-        </Card>
+        </div>
       )}
 
       {/* Projects without conversations */}
