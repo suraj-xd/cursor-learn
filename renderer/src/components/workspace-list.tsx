@@ -62,7 +62,7 @@ export function WorkspaceList() {
   const projectsWithoutConversations = projects.filter(project => project.conversationCount === 0)
 
   return (
-    <div className="space-y-8 pt-8">
+    <div className="space-y-8 pt-4 min-h-[calc(100vh-150px)]">
       {/* Projects with conversations */}
       {projectsWithConversations.length > 0 && (
         <div className='rounded-none border border-border bg-card' >
@@ -77,7 +77,7 @@ export function WorkspaceList() {
               </TableHeader>
               <TableBody >
                 {projectsWithConversations.map((project) => (
-                  <TableRow key={project.id} className="hover:bg-accent/50">
+                  <TableRow key={project.id} className="">
                     <TableCell>
                       <Link 
                         href={`/workspace?id=${project.id}`}

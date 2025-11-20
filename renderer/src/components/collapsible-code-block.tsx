@@ -50,7 +50,7 @@ export function CollapsibleCodeBlock({ code, language, style }: CollapsibleCodeB
           />
           <div className="flex justify-center pt-2 pb-2 bg-transparent">
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={() => setIsExpanded(!isExpanded)}
               className="gap-1 text-xs"
