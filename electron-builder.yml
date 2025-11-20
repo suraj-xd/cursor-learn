@@ -1,0 +1,16 @@
+appId: dev.cursor.chat.browser
+productName: Cursor Chat Browser
+copyright: Copyright © 2025
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - from: .
+    filter:
+      - package.json
+      - app/**
+      - node_modules/**
+      - resources/**
+asarUnpack:
+  - node_modules/better-sqlite3/build/Release/*.node
+publish: null
