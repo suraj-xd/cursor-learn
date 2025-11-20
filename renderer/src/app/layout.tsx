@@ -47,11 +47,11 @@ export default function RootLayout({
       >
         <ThemeProvider defaultTheme="dark">
           <TooltipProvider>
-            <Navbar />
+            {/* <Navbar /> */}
             <main className="container mx-auto py-4 flex-1">
               {children}
             </main>
-            <Footer />
+            {/* <Footer /> */}
           </TooltipProvider>
         </ThemeProvider>
       </body>

@@ -1,7 +1,8 @@
 import path from 'path'
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, screen } from 'electron'
 import serve from 'electron-serve'
 import { createWindow } from './helpers'
+import { APP_CONFIG, getAppIconPath } from './app-config'
 import {
   listWorkspaces,
   getWorkspaceDetails,
@@ -22,6 +23,8 @@ import { generatePdf } from './services/pdf-service'
 
 const isProd = process.env.NODE_ENV === 'production'
 
+app.setName(APP_CONFIG.appName)
+
 if (isProd) {
   serve({ directory: 'app' })
 } else {
@@ -31,9 +34,15 @@ if (isProd) {
 ;(async () => {
   await app.whenReady()
 
+  const { workAreaSize } = screen.getPrimaryDisplay()
+  const windowWidth = Math.round(workAreaSize.width * APP_CONFIG.window.widthRatio)
+  const windowHeight = Math.round(workAreaSize.height * APP_CONFIG.window.heightRatio)
+
   const mainWindow = createWindow('main', {
-    width: 1280,
-    height: 800,
+    width: windowWidth,
+    height: windowHeight,
+    title: APP_CONFIG.appName,
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },

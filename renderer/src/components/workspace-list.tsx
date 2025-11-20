@@ -109,7 +109,7 @@ export function WorkspaceList() {
       )}
 
       {/* Projects without conversations */}
-      {projectsWithoutConversations.length > 0 && (
+      {/* {projectsWithoutConversations.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Projects without Conversations</CardTitle>
@@ -156,7 +156,7 @@ export function WorkspaceList() {
             </Table>
           </CardContent>
         </Card>
-      )}
+      )} */}
 
       {/* No projects found */}
       {projects.length === 0 && (
