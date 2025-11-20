@@ -10,13 +10,13 @@ import { Loading } from "@/components/ui/loading"
 import { DownloadMenu } from "@/components/download-menu"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism'
-import type { ComponentType } from 'react'
 import { ChatTab, ComposerChat } from "@/types/workspace"
 import { Badge } from "@/components/ui/badge"
 import { CopyButton } from "@/components/copy-button"
 import { format } from 'date-fns'
+import { useSettingsStore } from "@/store/settings"
+import { codeThemeStyles } from "@/lib/code-themes"
+import { CollapsibleCodeBlock } from "@/components/collapsible-code-block"
 
 interface WorkspaceState {
   projectName: string;
@@ -27,6 +27,8 @@ interface WorkspaceState {
 }
 
 export default function WorkspaceClient() {
+  const codeTheme = useSettingsStore((state) => state.codeTheme)
+  const codeThemeStyle = codeThemeStyles[codeTheme] ?? codeThemeStyles.vscDarkPlus
   const searchParams = useSearchParams()
   const router = useRouter()
   const workspaceId = searchParams.get('id')
@@ -117,7 +119,7 @@ export default function WorkspaceClient() {
   const selectedChat = state.tabs.find(tab => tab.id === state.selectedId)
 
   return (
-    <div className="space-y-2 mx-4 border border-border rounded-[8px] p-4 pb-0">
+    <div className="space-y-2 mx-4 border border-border rounded-[8px] p-4 pt-2 pb-0">
       <div className="flex items-center justify-between">
         <div className="flex justify-between w-full">
           <Button variant="ghost" size="sm" asChild className="gap-2">
@@ -189,12 +191,12 @@ export default function WorkspaceClient() {
                     key={index}
                     className={`p-4 rounded-lg ${
                       bubble.type === 'user'
-                        ? 'bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800'
-                        : 'bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700'
+                        ? 'bg-muted border border-accent'
+                        : 'bg-muted border border-muted-foreground/30'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge variant={bubble.type === 'user' ? 'default' : 'secondary'}>
+                      <Badge className='border border-border' variant={bubble.type === 'user' ? 'default' : 'secondary'}>
                         {bubble.type === 'user' ? 'You' : 'AI'}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
@@ -207,17 +209,19 @@ export default function WorkspaceClient() {
                         components={{
                           code({inline, className, children, ...props}: {inline?: boolean, className?: string, children?: React.ReactNode}) {
                             const match = /language-(\w+)/.exec(className || '')
-                            const Highlighter = SyntaxHighlighter as unknown as ComponentType<any>
-                            return !inline && match ? (
-                              <Highlighter
-                                style={vscDarkPlus}
-                                language={match[1]}
-                                PreTag="div"
-                                {...props}
-                              >
-                                {String(children).replace(/\n$/, '')}
-                              </Highlighter>
-                            ) : (
+                            
+                            if (!inline) {
+                              const codeString = String(children).replace(/\n$/, '')
+                              return (
+                                <CollapsibleCodeBlock
+                                  code={codeString}
+                                  language={match ? match[1] : 'javascript'}
+                                  style={codeThemeStyle}
+                                />
+                              )
+                            }
+                            
+                            return (
                               <code className={className} {...props}>
                                 {children}
                               </code>
@@ -227,6 +231,7 @@ export default function WorkspaceClient() {
                       >
                         {bubble.text}
                       </ReactMarkdown>
+                      
                     </div>
                   </div>
                 ))}

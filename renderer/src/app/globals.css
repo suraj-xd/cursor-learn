@@ -148,24 +148,20 @@
   }
 }
 
-@layer components {
-  /* Add dark mode styles for table elements */
+/* @layer components {
   .dark .hover\:bg-gray-50:hover {
     @apply hover:bg-gray-800;
   }
 
-  /* Style for table borders in dark mode */
   .dark .border {
     @apply border-gray-800;
   }
 
-  /* Style for table rows in dark mode */
   .dark tr {
     @apply border-gray-800;
   }
 
-  /* Input background in dark mode */
   .dark input {
     @apply bg-gray-800;
   }
-} 
+}  */

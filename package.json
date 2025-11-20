@@ -31,7 +31,7 @@
     "pdfmake": "^0.2.14",
     "puppeteer": "^23.6.1",
     "react-markdown": "^9.0.1",
-    "react-syntax-highlighter": "^15.6.1",
+    "react-syntax-highlighter": "^16.1.0",
     "refractor": "^4.8.1",
     "rehype-prism-plus": "^2.0.0",
     "remark-gfm": "^4.0.0",

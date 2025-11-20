@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ThemeToggle } from "./theme-toggle";
+import { SettingsSheet } from "./settings-sheet";
 import { SquareMousePointerIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -53,7 +53,7 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center space-x-4 z-[1]">
-          <ThemeToggle />
+          <SettingsSheet />
         </div>
       </div>
     </nav>
