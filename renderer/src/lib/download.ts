@@ -1,5 +1,33 @@
 import { ChatTab } from "@/types/workspace"
-import { marked } from 'marked'
+import { marked } from "marked"
+
+function sanitizeFileName(name: string) {
+  const cleaned = name
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\.+$/, "")
+    .trim()
+  return cleaned || "untitled"
+}
+
+function getDownloadFileName(tab: ChatTab, extension: string) {
+  const base = sanitizeFileName(tab.title || `chat-${tab.id}`)
+  return `${base}.${extension}`
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  link.style.display = "none"
+  document.body.appendChild(link)
+  link.click()
+  setTimeout(() => {
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  })
+}
 
 export function convertChatToMarkdown(tab: ChatTab): string {
   let markdown = `# ${tab.title || `Chat ${tab.id}`}\n\n`
@@ -24,15 +52,8 @@ export function convertChatToMarkdown(tab: ChatTab): string {
 
 export function downloadMarkdown(tab: ChatTab) {
   const markdown = convertChatToMarkdown(tab)
-  const blob = new Blob([markdown], { type: 'text/markdown' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${tab.title || `chat-${tab.id}`}.md`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  const blob = new Blob([markdown], { type: "text/markdown" })
+  triggerDownload(blob, getDownloadFileName(tab, "md"))
 }
 
 export function downloadHTML(tab: ChatTab) {
@@ -108,36 +129,22 @@ export function downloadHTML(tab: ChatTab) {
   </html>
   `
   
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${tab.title || `chat-${tab.id}`}.html`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  const blob = new Blob([html], { type: "text/html" })
+  triggerDownload(blob, getDownloadFileName(tab, "html"))
 }
 
 export async function downloadPDF(tab: ChatTab) {
   try {
     if (!window?.ipc) {
-      throw new Error('IPC bridge unavailable')
+      throw new Error("IPC bridge unavailable")
     }
     const markdown = convertChatToMarkdown(tab)
     const pdfData = await window.ipc.pdf.generate(markdown, tab.title || `Chat ${tab.id}`)
-    const blob = new Blob([pdfData], { type: 'application/pdf' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${tab.title || `chat-${tab.id}`}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    const blob = new Blob([pdfData], { type: "application/pdf" })
+    triggerDownload(blob, getDownloadFileName(tab, "pdf"))
   } catch (error) {
-    console.error('Failed to download PDF:', error)
-    alert('Failed to generate PDF.')
+    console.error("Failed to download PDF:", error)
+    alert("Failed to generate PDF.")
   }
 }
 

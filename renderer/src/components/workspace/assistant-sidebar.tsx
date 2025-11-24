@@ -25,13 +25,9 @@ export function AssistantSidebar({ open, onClose }: AssistantSidebarProps) {
       <SidebarContent className="flex flex-col">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center p-6">
-            <div className="w-16 h-16 rounded-full bg-sidebar-accent/10 flex items-center justify-center mx-auto mb-4">
-              <Bot className="h-8 w-8 text-sidebar-accent" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">AI Assistant</h3>
+            <h3 className="text-lg font-medium font-mono uppercase text-accent mb-2">Hello there!</h3>
             <p className="text-sm text-sidebar-foreground/60 max-w-[280px]">
-              Ask questions about your conversations, get summaries, or explore
-              insights from your chat history.
+              How can I help you today?
             </p>
           </div>
         </div>

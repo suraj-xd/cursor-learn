@@ -5,7 +5,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
-import { Download } from "lucide-react"
+import { SquareArrowOutUpRight } from "lucide-react"
 import { ChatTab } from "@/types/workspace"
 import { downloadMarkdown, downloadPDF, downloadHTML } from "@/lib/download"
 
@@ -18,19 +18,19 @@ export function DownloadMenu({ tab }: DownloadMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm">
-          <Download className="w-4 h-4 mr-2" />
-          Download
+          <SquareArrowOutUpRight className="w-4 h-4 mr-2" />
+          Export
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => downloadMarkdown(tab)}>
-          Download as Markdown
+          Export as Markdown
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => downloadHTML(tab)}>
-          Download as HTML
+          Export as HTML
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => downloadPDF(tab)}>
-          Download as PDF
+          Export as PDF
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

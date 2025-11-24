@@ -49,14 +49,14 @@ const ConversationItem = memo(function ConversationItem({
         tooltip={tooltipText}
         onClick={handleClick}
       >
-        <MessageSquare
+        {/* <MessageSquare
           className={cn(
             "h-4 w-4 shrink-0",
             isSelected
               ? "text-sidebar-accent-foreground"
               : "text-sidebar-foreground/70"
           )}
-        />
+        /> */}
         {!collapsed && (
           <div className="flex flex-col items-start overflow-hidden">
             <span className="truncate w-full text-left">
