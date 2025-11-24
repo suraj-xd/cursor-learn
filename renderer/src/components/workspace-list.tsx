@@ -5,7 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { Loading } from "@/components/ui/loading"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
-import { FolderX, GitBranch, ChevronRight } from "lucide-react"
+import { FolderX, GitBranch, ChevronRight, CornerDownRightIcon } from "lucide-react"
 import { useWorkspaceListStore } from '@/store/workspace'
 import type { ConversationPreview } from '@/services/workspace'
 
@@ -78,6 +78,7 @@ const ConversationBranch = memo(function ConversationBranch({
       {remainingCount > 0 && (
         <div className="relative flex items-start">
           <div className="absolute left-0 top-0 flex flex-col items-center">
+            <CornerDownRightIcon className="w-3 h-3 text-muted-foreground" />
             <div className="w-px bg-border h-3" />
             <div className="w-3 h-px bg-border" style={{ marginLeft: '3px' }} />
           </div>
@@ -107,7 +108,7 @@ const WorkspaceRow = memo(function WorkspaceRow({ project }: WorkspaceRowProps) 
   const hasConversations = project.conversations && project.conversations.length > 0
 
   return (
-    <div className="border-b border-border py-4 px-2 hover:bg-accent/30 transition-colors">
+    <div className="border border-border bg-muted/50 dark:bg-muted/10 rounded-lg p-2">
       <div className="flex items-center gap-3">
         <GitBranch className="w-4 h-4 text-muted-foreground shrink-0" />
         <Link 
