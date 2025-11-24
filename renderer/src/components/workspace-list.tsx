@@ -5,7 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { Loading } from "@/components/ui/loading"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
-import { FolderX, GitBranch, ChevronRight, CornerDownRightIcon } from "lucide-react"
+import { FolderX, GitBranch, ChevronRight, CornerDownRight } from "lucide-react"
 import { useWorkspaceListStore } from '@/store/workspace'
 import type { ConversationPreview } from '@/services/workspace'
 
@@ -14,13 +14,11 @@ const MAX_VISIBLE_CONVERSATIONS = 3
 interface ConversationItemProps {
   conversation: ConversationPreview
   projectId: string
-  isLast: boolean
 }
 
 const ConversationItem = memo(function ConversationItem({ 
   conversation, 
-  projectId, 
-  isLast 
+  projectId
 }: ConversationItemProps) {
   const timeAgo = useMemo(() => {
     return formatDistanceToNow(new Date(conversation.lastUpdatedAt), { addSuffix: true })
@@ -28,13 +26,10 @@ const ConversationItem = memo(function ConversationItem({
 
   return (
     <div className="relative flex items-start group">
-      <div className="absolute left-0 top-0 bottom-0 flex flex-col items-center">
-        <div className="w-px bg-border h-3" />
-        <div className="w-3 h-px bg-border" style={{ marginLeft: '3px' }} />
-        {!isLast && <div className="w-px bg-border flex-1" />}
+      <div className="absolute left-1.5 top-2 flex items-center">
+        <CornerDownRight className="w-3 h-3 text-muted-foreground" />
       </div>
       <div className="ml-4 pl-2 py-1 flex items-center gap-2 min-w-0">
-        <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
         <Link 
           href={`/workspace?id=${projectId}&tab=${conversation.id}`}
           className="text-sm text-muted-foreground hover:text-foreground truncate transition-colors"
@@ -67,21 +62,15 @@ const ConversationBranch = memo(function ConversationBranch({
 
   return (
     <div className="relative ml-4 mt-2">
-      {visibleConversations.map((conv, index) => (
+      {visibleConversations.map((conv) => (
         <ConversationItem
           key={conv.id}
           conversation={conv}
           projectId={projectId}
-          isLast={index === visibleConversations.length - 1 && remainingCount <= 0}
         />
       ))}
       {remainingCount > 0 && (
         <div className="relative flex items-start">
-          <div className="absolute left-0 top-0 flex flex-col items-center">
-            <CornerDownRightIcon className="w-3 h-3 text-muted-foreground" />
-            <div className="w-px bg-border h-3" />
-            <div className="w-3 h-px bg-border" style={{ marginLeft: '3px' }} />
-          </div>
           <Link 
             href={`/workspace?id=${projectId}`}
             className="ml-4 pl-2 py-1 text-sm text-muted-foreground/70 hover:text-foreground flex items-center gap-1 transition-colors"
@@ -117,7 +106,7 @@ const WorkspaceRow = memo(function WorkspaceRow({ project }: WorkspaceRowProps) 
         >
           {project.name}
         </Link>
-        <span className="text-xs text-muted-foreground font-mono">
+        <span className="text-xs text-green-500 uppercase font-mono">
           {project.conversationCount} conversation{project.conversationCount !== 1 ? 's' : ''}
         </span>
       </div>
@@ -174,9 +163,9 @@ export const WorkspaceList = memo(function WorkspaceList() {
   }
 
   return (
-    <div className="space-y-1 pt-4 min-h-[calc(100vh-150px)]">
+    <div className="space-y-2 pt-4 min-h-[calc(100vh-150px)]">
       {projectsWithConversations.length > 0 && (
-        <div className="space-y-0">
+        <div className="space-y-2">
           {projectsWithConversations.map(project => (
             <WorkspaceRow key={project.id} project={project} />
           ))}

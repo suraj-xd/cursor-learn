@@ -43,10 +43,10 @@ interface WorkspaceDetailState {
   selectedId: string | null
   isLoading: boolean
   error: string | null
+  _fetchPromise: Promise<void> | null
   
-  setWorkspaceId: (id: string | null, initialTab?: string | null) => void
+  initialize: (id: string | null, initialTab?: string | null) => void
   setSelectedId: (id: string) => void
-  fetchTabs: () => Promise<void>
   reset: () => void
 }
 
@@ -57,13 +57,19 @@ export const useWorkspaceDetailStore = create<WorkspaceDetailState>((set, get) =
   selectedId: null,
   isLoading: false,
   error: null,
+  _fetchPromise: null,
 
-  setWorkspaceId: (id, initialTab) => {
+  initialize: (id, initialTab) => {
     const state = get()
-    if (state.workspaceId === id) {
+    
+    if (state.workspaceId === id && state.tabs.length > 0) {
       if (initialTab && state.selectedId !== initialTab) {
         set({ selectedId: initialTab })
       }
+      return
+    }
+
+    if (state.workspaceId === id && state.isLoading) {
       return
     }
     
@@ -73,45 +79,62 @@ export const useWorkspaceDetailStore = create<WorkspaceDetailState>((set, get) =
         ? `Project ${id.slice(0, 8)}` 
         : 'Select a workspace'
 
+    if (!id) {
+      set({ 
+        workspaceId: null, 
+        projectName,
+        selectedId: null,
+        tabs: [],
+        isLoading: false,
+        error: null 
+      })
+      return
+    }
+
     set({ 
       workspaceId: id, 
       projectName,
       selectedId: initialTab || null,
       tabs: [],
-      isLoading: Boolean(id),
+      isLoading: true,
       error: null 
     })
 
-    if (id) {
-      get().fetchTabs()
-    }
+    const fetchPromise = (async () => {
+      try {
+        const data = await workspaceService.getWorkspaceTabs(id)
+        const tabs = data.tabs || []
+        const currentState = get()
+        
+        if (currentState.workspaceId !== id) return
+        
+        const selectedId = initialTab && tabs.some(t => t.id === initialTab)
+          ? initialTab
+          : tabs.length > 0 ? tabs[0].id : null
+
+        set({ 
+          tabs, 
+          isLoading: false,
+          selectedId,
+          _fetchPromise: null
+        })
+      } catch (error) {
+        const currentState = get()
+        if (currentState.workspaceId !== id) return
+        
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to fetch workspace',
+          isLoading: false,
+          _fetchPromise: null
+        })
+      }
+    })()
+
+    set({ _fetchPromise: fetchPromise })
   },
 
   setSelectedId: (id) => {
     set({ selectedId: id })
-  },
-
-  fetchTabs: async () => {
-    const { workspaceId } = get()
-    if (!workspaceId) return
-
-    set({ isLoading: true, error: null })
-    try {
-      const data = await workspaceService.getWorkspaceTabs(workspaceId)
-      const tabs = data.tabs || []
-      const state = get()
-      
-      set({ 
-        tabs, 
-        isLoading: false,
-        selectedId: state.selectedId || (tabs.length > 0 ? tabs[0].id : null)
-      })
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to fetch workspace',
-        isLoading: false 
-      })
-    }
   },
 
   reset: () => {
@@ -121,7 +144,8 @@ export const useWorkspaceDetailStore = create<WorkspaceDetailState>((set, get) =
       tabs: [],
       selectedId: null,
       isLoading: false,
-      error: null
+      error: null,
+      _fetchPromise: null
     })
   }
 }))
@@ -130,3 +154,8 @@ export const selectSelectedChat = (state: WorkspaceDetailState): ChatTab | undef
   return state.tabs.find(tab => tab.id === state.selectedId)
 }
 
+export const workspaceDetailActions = {
+  initialize: useWorkspaceDetailStore.getState().initialize,
+  setSelectedId: useWorkspaceDetailStore.getState().setSelectedId,
+  reset: useWorkspaceDetailStore.getState().reset
+}

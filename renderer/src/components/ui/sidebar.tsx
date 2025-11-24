@@ -326,7 +326,7 @@ export function SidebarMenuButton({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={8}>
+        <TooltipContent side="right" sideOffset={8} className="whitespace-pre-line">
           {tooltip}
         </TooltipContent>
       </Tooltip>

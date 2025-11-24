@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useEffect, useCallback, Suspense } from 'react'
+import { memo, useEffect, useCallback, Suspense, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
@@ -14,9 +14,7 @@ import { ConversationSidebar } from '@/components/workspace/conversation-sidebar
 import { AssistantSidebar } from '@/components/workspace/assistant-sidebar'
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useWorkspaceDetailStore, selectSelectedChat } from '@/store/workspace'
-import { shallow } from 'zustand/shallow'
-
+import { useWorkspaceDetailStore, selectSelectedChat, workspaceDetailActions } from '@/store/workspace'
 import { ChatView } from '@/components/workspace/chat-view'
 
 const ChatViewSkeleton = memo(function ChatViewSkeleton() {
@@ -166,6 +164,7 @@ function WorkspaceClientInner() {
   const router = useRouter()
   const workspaceId = searchParams.get('id')
   const initialTab = searchParams.get('tab')
+  const initializedRef = useRef<string | null>(null)
 
   const {
     leftOpen,
@@ -177,40 +176,29 @@ function WorkspaceClientInner() {
     setRightOpen,
   } = useSidebar()
 
-  const { 
-    projectName, 
-    tabs, 
-    selectedId, 
-    isLoading,
-    setWorkspaceId, 
-    setSelectedId 
-  } = useWorkspaceDetailStore(
-    state => ({
-      projectName: state.projectName,
-      tabs: state.tabs,
-      selectedId: state.selectedId,
-      isLoading: state.isLoading,
-      setWorkspaceId: state.setWorkspaceId,
-      setSelectedId: state.setSelectedId
-    }),
-    shallow
-  )
-
+  const projectName = useWorkspaceDetailStore(state => state.projectName)
+  const tabs = useWorkspaceDetailStore(state => state.tabs)
+  const selectedId = useWorkspaceDetailStore(state => state.selectedId)
+  const isLoading = useWorkspaceDetailStore(state => state.isLoading)
   const selectedChat = useWorkspaceDetailStore(selectSelectedChat)
 
   useEffect(() => {
-    setWorkspaceId(workspaceId, initialTab)
-  }, [workspaceId, initialTab, setWorkspaceId])
+    const key = `${workspaceId}:${initialTab}`
+    if (initializedRef.current === key) return
+    initializedRef.current = key
+    
+    workspaceDetailActions.initialize(workspaceId, initialTab)
+  }, [workspaceId, initialTab])
 
   const handleSelect = useCallback((id: string) => {
-    setSelectedId(id)
+    workspaceDetailActions.setSelectedId(id)
     const query = new URLSearchParams()
     if (workspaceId) {
       query.set('id', workspaceId)
     }
     query.set('tab', id)
     router.replace(`/workspace?${query.toString()}`, { scroll: false })
-  }, [workspaceId, router, setSelectedId])
+  }, [workspaceId, router])
 
   if (!workspaceId) {
     return <NoWorkspaceSelected />

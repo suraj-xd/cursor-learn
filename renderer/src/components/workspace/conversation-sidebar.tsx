@@ -37,12 +37,16 @@ const ConversationItem = memo(function ConversationItem({
     return new Date(tab.timestamp).toLocaleDateString()
   }, [tab.timestamp])
 
+  const tooltipText = useMemo(() => {
+    return `${displayTitle}\n${formattedDate}`
+  }, [displayTitle, formattedDate])
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={isSelected}
         collapsed={collapsed}
-        tooltip={displayTitle}
+        tooltip={tooltipText}
         onClick={handleClick}
       >
         <MessageSquare
@@ -84,7 +88,6 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   onSelect,
   open,
   collapsed,
-  onToggle,
   onCollapse,
 }: ConversationSidebarProps) {
   const handleCollapseToggle = useCallback(() => {
