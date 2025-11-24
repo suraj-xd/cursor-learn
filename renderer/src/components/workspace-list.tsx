@@ -1,175 +1,186 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import { memo, useEffect, useMemo } from 'react'
+import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Loading } from "@/components/ui/loading"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Info } from "lucide-react"
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
+import { FolderX, GitBranch, ChevronRight } from "lucide-react"
+import { useWorkspaceListStore } from '@/store/workspace'
+import type { ConversationPreview } from '@/services/workspace'
 
-interface Project {
-  id: string;
-  name: string;
-  path?: string;
-  conversationCount: number;
-  lastModified: string;
+const MAX_VISIBLE_CONVERSATIONS = 3
+
+interface ConversationItemProps {
+  conversation: ConversationPreview
+  projectId: string
+  isLast: boolean
 }
 
-export function WorkspaceList() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    let active = true
-    const fetchProjects = async () => {
-      try {
-        if (!window?.ipc) return
-        const data = await window.ipc.workspace.list()
-        if (active) {
-          setProjects(data || [])
-        }
-      } catch (error) {
-        console.error('Failed to fetch projects:', error)
-        if (active) {
-          setProjects([])
-        }
-      } finally {
-        if (active) {
-          setIsLoading(false)
-        }
-      }
-    }
-    fetchProjects()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  if (isLoading) {
-    return <Loading message="Loading projects..." />
-  }
-
-  const projectsWithConversations = projects.filter(project => project.conversationCount > 0)
-  const projectsWithoutConversations = projects.filter(project => project.conversationCount === 0)
+const ConversationItem = memo(function ConversationItem({ 
+  conversation, 
+  projectId, 
+  isLast 
+}: ConversationItemProps) {
+  const timeAgo = useMemo(() => {
+    return formatDistanceToNow(new Date(conversation.lastUpdatedAt), { addSuffix: true })
+  }, [conversation.lastUpdatedAt])
 
   return (
-    <div className="space-y-8 pt-4 min-h-[calc(100vh-150px)]">
-      {/* Projects with conversations */}
-      {projectsWithConversations.length > 0 && (
-        <div className='rounded-none border border-border bg-card' >
-       
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className='font-mono uppercase' >Name</TableHead>
-                  <TableHead className='font-mono uppercase' >Conversations</TableHead>
-                  <TableHead className='font-mono uppercase' >Last Modified</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody >
-                {projectsWithConversations.map((project) => (
-                  <TableRow key={project.id} className="">
-                    <TableCell>
-                      <Link 
-                        href={`/workspace?id=${project.id}`}
-                      >
-                        {project.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-green-600 font-medium">
-                        {project.conversationCount} conversation{project.conversationCount !== 1 ? 's' : ''}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(project.lastModified), 'PPp')}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+    <div className="relative flex items-start group">
+      <div className="absolute left-0 top-0 bottom-0 flex flex-col items-center">
+        <div className="w-px bg-border h-3" />
+        <div className="w-3 h-px bg-border" style={{ marginLeft: '3px' }} />
+        {!isLast && <div className="w-px bg-border flex-1" />}
+      </div>
+      <div className="ml-4 pl-2 py-1 flex items-center gap-2 min-w-0">
+        <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+        <Link 
+          href={`/workspace?id=${projectId}&tab=${conversation.id}`}
+          className="text-sm text-muted-foreground hover:text-foreground truncate transition-colors"
+        >
+          {conversation.name}
+        </Link>
+        <span className="text-xs text-muted-foreground/60 shrink-0">
+          {timeAgo}
+        </span>
+      </div>
+    </div>
+  )
+})
+
+interface ConversationBranchProps {
+  conversations: ConversationPreview[]
+  projectId: string
+}
+
+const ConversationBranch = memo(function ConversationBranch({ 
+  conversations, 
+  projectId 
+}: ConversationBranchProps) {
+  const visibleConversations = useMemo(() => 
+    conversations.slice(0, MAX_VISIBLE_CONVERSATIONS), 
+    [conversations]
+  )
+  
+  const remainingCount = conversations.length - MAX_VISIBLE_CONVERSATIONS
+
+  return (
+    <div className="relative ml-4 mt-2">
+      {visibleConversations.map((conv, index) => (
+        <ConversationItem
+          key={conv.id}
+          conversation={conv}
+          projectId={projectId}
+          isLast={index === visibleConversations.length - 1 && remainingCount <= 0}
+        />
+      ))}
+      {remainingCount > 0 && (
+        <div className="relative flex items-start">
+          <div className="absolute left-0 top-0 flex flex-col items-center">
+            <div className="w-px bg-border h-3" />
+            <div className="w-3 h-px bg-border" style={{ marginLeft: '3px' }} />
+          </div>
+          <Link 
+            href={`/workspace?id=${projectId}`}
+            className="ml-4 pl-2 py-1 text-sm text-muted-foreground/70 hover:text-foreground flex items-center gap-1 transition-colors"
+          >
+            <span className="text-xs">+{remainingCount} more</span>
+            <ChevronRight className="w-3 h-3" />
+          </Link>
         </div>
-      )}
-
-      {/* Projects without conversations */}
-      {/* {projectsWithoutConversations.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Projects without Conversations</CardTitle>
-            <CardDescription>
-              {projectsWithoutConversations.length} project{projectsWithoutConversations.length !== 1 ? 's' : ''} with no chat history found
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Alert className="mb-4">
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                These projects may appear empty due to folder relocation, Cursor updates, or conversations being stored in a different location. 
-                You can still click on a project to check if there are any legacy conversations available.
-              </AlertDescription>
-            </Alert>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Conversations</TableHead>
-                  <TableHead>Last Modified</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projectsWithoutConversations.map((project) => (
-                  <TableRow key={project.id} className="hover:bg-accent/50">
-                    <TableCell>
-                      <Link 
-                        href={`/workspace?id=${project.id}`}
-                        className="text-blue-600 hover:underline font-medium"
-                      >
-                        {project.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-gray-400">0</span>
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(project.lastModified), 'PPp')}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )} */}
-
-      {/* No projects found */}
-      {projects.length === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>No Projects Found</CardTitle>
-            <CardDescription>
-              No Cursor workspace projects were found in the configured location.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                This could be due to an incorrect workspace path configuration or no Cursor projects being available. 
-                Check the configuration page to verify your Cursor workspace storage location.
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
       )}
     </div>
   )
-} 
+})
+
+interface WorkspaceRowProps {
+  project: {
+    id: string
+    name: string
+    conversationCount: number
+    conversations: ConversationPreview[]
+  }
+}
+
+const WorkspaceRow = memo(function WorkspaceRow({ project }: WorkspaceRowProps) {
+  const hasConversations = project.conversations && project.conversations.length > 0
+
+  return (
+    <div className="border-b border-border py-4 px-2 hover:bg-accent/30 transition-colors">
+      <div className="flex items-center gap-3">
+        <GitBranch className="w-4 h-4 text-muted-foreground shrink-0" />
+        <Link 
+          href={`/workspace?id=${project.id}`}
+          className="font-medium hover:underline flex-1 truncate"
+        >
+          {project.name}
+        </Link>
+        <span className="text-xs text-muted-foreground font-mono">
+          {project.conversationCount} conversation{project.conversationCount !== 1 ? 's' : ''}
+        </span>
+      </div>
+      {hasConversations && (
+        <ConversationBranch 
+          conversations={project.conversations} 
+          projectId={project.id}
+        />
+      )}
+    </div>
+  )
+})
+
+const EmptyState = memo(function EmptyState() {
+  return (
+    <Empty className="border">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <FolderX className="size-5" />
+        </EmptyMedia>
+        <EmptyTitle>No Projects Found</EmptyTitle>
+        <EmptyDescription>
+          No Cursor workspace projects were found. This could be due to an incorrect 
+          workspace path configuration. Check the <Link href="/config" className="underline">configuration page</Link> to 
+          verify your Cursor workspace storage location.
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
+})
+
+export const WorkspaceList = memo(function WorkspaceList() {
+  const { projects, isLoading, fetchProjects } = useWorkspaceListStore()
+
+  useEffect(() => {
+    fetchProjects()
+  }, [fetchProjects])
+
+  const projectsWithConversations = useMemo(() => 
+    projects.filter(project => project.conversationCount > 0),
+    [projects]
+  )
+
+  if (isLoading && projects.length === 0) {
+    return <Loading message="Loading projects..." />
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="pt-4 min-h-[calc(100vh-150px)] flex items-center justify-center">
+        <EmptyState />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1 pt-4 min-h-[calc(100vh-150px)]">
+      {projectsWithConversations.length > 0 && (
+        <div className="space-y-0">
+          {projectsWithConversations.map(project => (
+            <WorkspaceRow key={project.id} project={project} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+})

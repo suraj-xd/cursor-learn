@@ -1,32 +1,84 @@
-"use client";
+"use client"
 
-import { MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
-import { ChatTab } from "@/types/workspace";
+import { memo, useCallback, useMemo } from 'react'
+import { MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
+import type { ChatTab } from '@/types/workspace'
 import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+} from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
-interface ConversationSidebarProps {
-  tabs: ChatTab[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  open: boolean;
-  collapsed: boolean;
-  onToggle: () => void;
-  onCollapse: (collapsed: boolean) => void;
+interface ConversationItemProps {
+  tab: ChatTab
+  isSelected: boolean
+  collapsed: boolean
+  onSelect: (id: string) => void
 }
 
-export function ConversationSidebar({
+const ConversationItem = memo(function ConversationItem({ 
+  tab, 
+  isSelected, 
+  collapsed, 
+  onSelect 
+}: ConversationItemProps) {
+  const handleClick = useCallback(() => {
+    onSelect(tab.id)
+  }, [onSelect, tab.id])
+
+  const displayTitle = tab.title || `Chat ${tab.id.slice(0, 8)}`
+  const formattedDate = useMemo(() => {
+    return new Date(tab.timestamp).toLocaleDateString()
+  }, [tab.timestamp])
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={isSelected}
+        collapsed={collapsed}
+        tooltip={displayTitle}
+        onClick={handleClick}
+      >
+        <MessageSquare
+          className={cn(
+            "h-4 w-4 shrink-0",
+            isSelected
+              ? "text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70"
+          )}
+        />
+        {!collapsed && (
+          <div className="flex flex-col items-start overflow-hidden">
+            <span className="truncate w-full text-left">
+              {displayTitle}
+            </span>
+            <span className="text-[10px] text-sidebar-foreground/50 font-mono">
+              {formattedDate}
+            </span>
+          </div>
+        )}
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+})
+
+interface ConversationSidebarProps {
+  tabs: ChatTab[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  open: boolean
+  collapsed: boolean
+  onToggle: () => void
+  onCollapse: (collapsed: boolean) => void
+}
+
+export const ConversationSidebar = memo(function ConversationSidebar({
   tabs,
   selectedId,
   onSelect,
@@ -35,6 +87,10 @@ export function ConversationSidebar({
   onToggle,
   onCollapse,
 }: ConversationSidebarProps) {
+  const handleCollapseToggle = useCallback(() => {
+    onCollapse(!collapsed)
+  }, [onCollapse, collapsed])
+
   return (
     <Sidebar side="left" open={open} collapsed={collapsed}>
       <SidebarHeader className="justify-between">
@@ -48,7 +104,7 @@ export function ConversationSidebar({
             variant="ghost"
             size="icon"
             className="h-6 w-6"
-            onClick={() => onCollapse(!collapsed)}
+            onClick={handleCollapseToggle}
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -61,39 +117,18 @@ export function ConversationSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
-            {tabs.map((tab) => (
-              <SidebarMenuItem key={tab.id}>
-                <SidebarMenuButton
-                  isActive={selectedId === tab.id}
-                  collapsed={collapsed}
-                  tooltip={tab.title || `Chat ${tab.id.slice(0, 8)}`}
-                  onClick={() => onSelect(tab.id)}
-                >
-                  <MessageSquare
-                    className={cn(
-                      "h-4 w-4 shrink-0",
-                      selectedId === tab.id
-                        ? "text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70"
-                    )}
-                  />
-                  {!collapsed && (
-                    <div className="flex flex-col items-start overflow-hidden">
-                      <span className="truncate w-full text-left">
-                        {tab.title || `Chat ${tab.id.slice(0, 8)}`}
-                      </span>
-                      <span className="text-[10px] text-sidebar-foreground/50 font-mono">
-                        {new Date(tab.timestamp).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+            {tabs.map(tab => (
+              <ConversationItem
+                key={tab.id}
+                tab={tab}
+                isSelected={selectedId === tab.id}
+                collapsed={collapsed}
+                onSelect={onSelect}
+              />
             ))}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>
-  );
-}
-
+  )
+})

@@ -10,12 +10,19 @@ type WorkspaceEntry = {
   workspaceJsonPath: string
 }
 
+export interface ConversationPreview {
+  id: string
+  name: string
+  lastUpdatedAt: number
+}
+
 export interface WorkspaceProject {
   id: string
   name: string
   path?: string
   conversationCount: number
   lastModified: string
+  conversations: ConversationPreview[]
 }
 
 export interface WorkspaceDetails {
@@ -372,12 +379,20 @@ export async function listWorkspaces(): Promise<WorkspaceProject[]> {
     }
 
     const conversations = conversationMap[entry.name] || []
+    const conversationPreviews: ConversationPreview[] = conversations
+      .sort((a, b) => (b.lastUpdatedAt || 0) - (a.lastUpdatedAt || 0))
+      .map(c => ({
+        id: c.composerId,
+        name: c.name,
+        lastUpdatedAt: c.lastUpdatedAt
+      }))
     projects.push({
       id: entry.name,
       name: workspaceName,
       path: entry.workspaceJsonPath,
       conversationCount: conversations.length,
-      lastModified: stats.mtime.toISOString()
+      lastModified: stats.mtime.toISOString(),
+      conversations: conversationPreviews
     })
   }
 
