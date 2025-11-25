@@ -804,7 +804,7 @@ export async function getConversationById(
       for (const row of bubbleRows) {
         try {
           const bubble = JSON.parse(row.value)
-          const text = extractBubbleText(bubble)
+          const text = extractTextFromBubble(bubble)
           if (text) {
             messages.push({
               role: bubble.type === 1 ? 'user' : 'ai',

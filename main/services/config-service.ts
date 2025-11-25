@@ -40,25 +40,57 @@ export async function detectEnvironment(): Promise<EnvironmentInfo> {
   }
 }
 
+export type UsernameOptions = {
+  osUserInfo: string | null
+  envUser: string | null
+  envLogname: string | null
+  whoami: string | null
+  homeDir: string | null
+  gitConfigName: string | null
+  macRealName: string | null
+}
+
+export async function getAllUsernames(): Promise<UsernameOptions> {
+  const result: UsernameOptions = {
+    osUserInfo: null,
+    envUser: null,
+    envLogname: null,
+    whoami: null,
+    homeDir: null,
+    gitConfigName: null,
+    macRealName: null,
+  }
+
+  try { result.osUserInfo = os.userInfo().username } catch {}
+  try { result.envUser = process.env.USER || null } catch {}
+  try { result.envLogname = process.env.LOGNAME || null } catch {}
+  try { result.whoami = execSync('whoami', { encoding: 'utf8' }).trim() } catch {}
+  try { result.homeDir = path.basename(os.homedir()) } catch {}
+  try { result.gitConfigName = execSync('git config user.name', { encoding: 'utf8' }).trim() } catch {}
+  
+  if (process.platform === 'darwin') {
+    try {
+      const raw = execSync('id -F', { encoding: 'utf8' }).trim()
+      result.macRealName = raw || null
+    } catch {}
+  }
+
+  return result
+}
+
 export async function getUsername(): Promise<string> {
   try {
-    let username = 'YOUR_USERNAME'
+    const homeDir = path.basename(os.homedir())
+    if (homeDir && homeDir !== 'root') return homeDir
+
     if (process.platform === 'win32') {
-      username = process.env.USERNAME || os.userInfo().username
-      return username
+      return process.env.USERNAME || os.userInfo().username
     }
 
-    try {
-      const output = execSync('cmd.exe /c echo %USERNAME%', { encoding: 'utf8' })
-      username = output.trim()
-    } catch {
-      username = os.userInfo().username
-    }
-
-    return username
+    return process.env.USER || os.userInfo().username
   } catch (error) {
     console.error('Failed to get username:', error)
-    return 'YOUR_USERNAME'
+    return ''
   }
 }
 

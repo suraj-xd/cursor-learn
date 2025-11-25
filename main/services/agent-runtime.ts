@@ -104,6 +104,119 @@ async function runOpenAICompletion(chat: ChatRecord): Promise<CompletionResult> 
   return { message }
 }
 
+export type StreamCallback = (chunk: string, done: boolean) => void
+
+export async function generateAssistantMessageStreaming(
+  chatId: string,
+  onChunk: StreamCallback
+): Promise<CompletionResult> {
+  const chat = getChatById(chatId)
+  if (!chat) {
+    throw new Error('Chat not found')
+  }
+
+  if (!isSupportedProvider(chat.provider)) {
+    throw new Error(`Provider "${chat.provider}" is not supported yet`)
+  }
+
+  if (chat.provider === 'openai') {
+    return runOpenAICompletionStreaming(chat, onChunk)
+  }
+
+  throw new Error('No provider handler found')
+}
+
+async function runOpenAICompletionStreaming(
+  chat: ChatRecord,
+  onChunk: StreamCallback
+): Promise<CompletionResult> {
+  const keyRecord = getApiKey('openai')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing OpenAI API key')
+  }
+
+  const messages = listMessagesForChat(chat.id)
+  if (messages.length === 0) {
+    throw new Error('Conversation is empty')
+  }
+
+  const modelId = sanitizeModelId(chat.modelId) || 'gpt-4o-mini'
+
+  const payload = {
+    model: modelId,
+    messages: mapMessagesForProvider(messages),
+    temperature: 0.4,
+    stream: true,
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${keyRecord.secret}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`OpenAI error: ${errorMessage}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+
+  const decoder = new TextDecoder()
+  let fullContent = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') {
+          onChunk('', true)
+          continue
+        }
+
+        try {
+          const parsed = JSON.parse(data)
+          const content = parsed.choices?.[0]?.delta?.content || ''
+          if (content) {
+            fullContent += content
+            onChunk(content, false)
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+      }
+    }
+  }
+
+  onChunk('', true)
+
+  const message = insertMessage({
+    chatId: chat.id,
+    role: 'assistant',
+    content: fullContent.trim(),
+    metadata: {
+      provider: 'openai',
+      model: payload.model,
+    },
+    tokenUsage: 0,
+  })
+
+  return { message }
+}
+
 async function safeJson(response: Response): Promise<any | null> {
   try {
     return await response.json()

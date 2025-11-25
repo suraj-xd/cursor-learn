@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { formatDistanceToNow } from "date-fns"
 import {
   AlertTriangle,
+  ArrowDown,
   AtSign,
   Loader2,
   MessageSquare,
@@ -21,8 +22,8 @@ import { agentsIpc } from "@/lib/agents/ipc"
 import type { AgentApiKeyMetadata, AgentChat, AgentChatBundle, AgentChatContext, AgentMessage, ProviderId } from "@/types/agents"
 import { toast } from "@/components/ui/toaster"
 import { useMessages } from "@/hooks/use-messages"
-import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/elements/conversation"
-import { Response } from "@/components/elements/response"
+import { Conversation, ConversationContent } from "@/components/elements/conversation"
+import { AgentResponse } from "./agent-response"
 import { ScrollArea } from "../ui/scroll-area"
 import { ModelSelector } from "./model-selector"
 import { ChatMenu } from "./chat-menu"
@@ -30,6 +31,7 @@ import { MentionPopover, type WorkspaceLog } from "./mention-popover"
 import { getDefaultModelForProvider, getMaxTokensForModel } from "@/lib/agents/models"
 import { workspaceService } from "@/services/workspace"
 import { CompactContext } from "./context"
+import { ShiningText } from "@/components/comman/shinning-text"
 
 type MentionedConversation = {
   id: string
@@ -38,6 +40,15 @@ type MentionedConversation = {
   content: string
   type: 'chat' | 'composer'
   wasSummarized: boolean
+  messageCount?: number
+}
+
+type AttachedContext = {
+  id: string
+  title: string
+  type: 'chat' | 'composer'
+  wasSummarized: boolean
+  messageCount?: number
 }
 
 type ComposerState = {
@@ -85,6 +96,7 @@ export function AgentsWorkspace() {
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
   const [contextPreview, setContextPreview] = useState<AgentChatContext | null>(null)
   const [isLoadingContext, setIsLoadingContext] = useState(false)
+  const [streamingContent, setStreamingContent] = useState<string>("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const pushDebug = useCallback((level: DebugLog["level"], message: string) => {
@@ -308,13 +320,19 @@ export function AgentsWorkspace() {
   }
 
   const handleModelChange = useCallback(
-    async (modelId: string) => {
+    async (modelId: string, newProvider?: ProviderId) => {
       if (!selectedChatId || !bundle?.chat) {
         return
       }
 
+      const provider = newProvider || bundle.chat.provider
+      
+      if (newProvider && !ensureApiKey(newProvider)) {
+        return
+      }
+
       try {
-        const fullModelId = `${bundle.chat.provider}:${modelId}`
+        const fullModelId = `${provider}:${modelId}`
         const updatedChat = await agentsIpc.chats.updateModel({
           chatId: selectedChatId,
           modelId: fullModelId,
@@ -325,15 +343,15 @@ export function AgentsWorkspace() {
             prev
               ? {
                   ...prev,
-                  chat: updatedChat,
+                  chat: { ...updatedChat, provider },
                 }
               : prev
           )
           setChats((prev) =>
-            prev.map((chat) => (chat.id === selectedChatId ? updatedChat : chat))
+            prev.map((chat) => (chat.id === selectedChatId ? { ...updatedChat, provider } : chat))
           )
           toast.success(`Switched to ${modelId}`)
-          pushDebug("info", `Model changed to ${modelId}`)
+          pushDebug("info", `Model changed to ${modelId}${newProvider ? ` (${newProvider})` : ''}`)
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to change model"
@@ -341,7 +359,7 @@ export function AgentsWorkspace() {
         toast.error(message)
       }
     },
-    [selectedChatId, bundle?.chat, pushDebug]
+    [selectedChatId, bundle?.chat, pushDebug, ensureApiKey]
   )
 
   const currentModelId = useMemo(() => {
@@ -359,9 +377,19 @@ export function AgentsWorkspace() {
       }
       setAssistantBusy(true)
       setAssistantError(null)
-      pushDebug("info", "Requesting assistant response")
+      setStreamingContent("")
+      pushDebug("info", "Requesting assistant response (streaming)")
+      
+      const unsubscribe = agentsIpc.chats.onStreamChunk(({ chatId: chunkChatId, chunk, done }) => {
+        if (chunkChatId !== chatId) return
+        if (!done && chunk) {
+          setStreamingContent((prev) => prev + chunk)
+        }
+      })
+      
       try {
-        const { message } = await agentsIpc.chats.complete(chatId)
+        const { message } = await agentsIpc.chats.completeStream(chatId)
+        setStreamingContent("")
         setBundle((prev) =>
           prev
             ? {
@@ -370,7 +398,6 @@ export function AgentsWorkspace() {
               }
             : prev,
         )
-        toast.success("Assistant responded")
         pushDebug("info", "Assistant response received")
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to reach assistant"
@@ -378,7 +405,9 @@ export function AgentsWorkspace() {
         toast.error(message)
         pushDebug("error", message)
       } finally {
+        unsubscribe()
         setAssistantBusy(false)
+        setStreamingContent("")
         fetchChats()
       }
     },
@@ -428,7 +457,7 @@ export function AgentsWorkspace() {
       }
 
       setComposer((prev) => {
-        const valueWithoutMention = prev.value.replace(/@\S*$/, "").trimEnd()
+        const valueWithoutMention = prev.value.replace(/@[^\n]*$/, "").trimEnd()
         return {
           ...prev,
           value: valueWithoutMention,
@@ -441,6 +470,7 @@ export function AgentsWorkspace() {
               content,
               type: log.type,
               wasSummarized,
+              messageCount: conversation.messages.length,
             },
           ],
         }
@@ -468,11 +498,22 @@ export function AgentsWorkspace() {
 
     const cursorPos = e.target.selectionStart
     const textBeforeCursor = value.slice(0, cursorPos)
-    const mentionMatch = textBeforeCursor.match(/@(\S*)$/)
-
-    if (mentionMatch) {
-      setMentionQuery(mentionMatch[1])
-      if (!mentionOpen) {
+    
+    if (mentionOpen) {
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+      if (lastAtIndex !== -1) {
+        const queryAfterAt = textBeforeCursor.slice(lastAtIndex + 1)
+        if (!queryAfterAt.includes('\n')) {
+          setMentionQuery(queryAfterAt)
+          return
+        }
+      }
+      setMentionOpen(false)
+      setMentionQuery("")
+    } else {
+      const mentionMatch = textBeforeCursor.match(/@([^\n]*)$/)
+      if (mentionMatch && !mentionMatch[1].includes('@')) {
+        setMentionQuery(mentionMatch[1])
         loadWorkspaceLogs()
         setMentionPosition({
           top: -280,
@@ -480,9 +521,6 @@ export function AgentsWorkspace() {
         })
         setMentionOpen(true)
       }
-    } else {
-      setMentionOpen(false)
-      setMentionQuery("")
     }
   }, [mentionOpen, loadWorkspaceLogs])
 
@@ -506,7 +544,14 @@ export function AgentsWorkspace() {
     setComposer((prev) => ({ ...prev, isSending: true }))
     setAssistantError(null)
 
-    let messageContent = trimmed
+    const attachedContexts: AttachedContext[] = composer.mentionedConversations.map((m) => ({
+      id: m.id,
+      title: m.title,
+      type: m.type,
+      wasSummarized: m.wasSummarized,
+      messageCount: m.messageCount,
+    }))
+
     if (composer.mentionedConversations.length > 0) {
       const contextSection = composer.mentionedConversations
         .map((m) => `--- Referenced Conversation: "${m.title}" (${m.type}) ---\n${m.content}\n--- End Referenced Conversation ---`)
@@ -527,7 +572,8 @@ export function AgentsWorkspace() {
       const message = await agentsIpc.messages.append({
         chatId: selectedChatId,
         role: "user",
-        content: messageContent,
+        content: trimmed,
+        metadata: attachedContexts.length > 0 ? { attachedContexts } : undefined,
       })
 
       const isFirstMessage = bundle.messages.length === 0
@@ -656,7 +702,7 @@ export function AgentsWorkspace() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium truncate">{selectedChatTitle}</p>
             {bundle?.chat.modelId && (
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="text-xs text-muted-foreground uppercase font-mono truncate">
                 {bundle.chat.modelId.split(":")[1] || bundle.chat.modelId}
               </p>
             )}
@@ -703,7 +749,11 @@ export function AgentsWorkspace() {
           
           {bundle && (
             <>
-              <MessagesView messages={bundle.messages} />
+              <MessagesView 
+                messages={bundle.messages} 
+                isLoading={assistantBusy}
+                streamingContent={streamingContent}
+              />
               
               <div className="border-t border-border/40 p-3">
                 {assistantError && (
@@ -818,21 +868,51 @@ export function AgentsWorkspace() {
   )
 }
 
-function MessagesView({ messages }: { messages: AgentMessage[] }) {
+function MessagesView({ 
+  messages, 
+  isLoading = false,
+  streamingContent = ""
+}: { 
+  messages: AgentMessage[]
+  isLoading?: boolean
+  streamingContent?: string 
+}) {
   const { containerRef, endRef, isAtBottom, scrollToBottom } = useMessages({
-    status: "idle",
+    status: isLoading ? "streaming" : "idle",
   })
+  const prevMessagesLengthRef = useRef(messages.length)
 
   const visibleMessages = useMemo(
     () => messages.filter((m) => m.role !== "system"),
     [messages]
   )
 
+  useEffect(() => {
+    if (messages.length > prevMessagesLengthRef.current) {
+      scrollToBottom()
+    }
+    prevMessagesLengthRef.current = messages.length
+  }, [messages.length, scrollToBottom])
+
+  const wasAtBottomRef = useRef(true)
+
+  useEffect(() => {
+    if (isLoading && !streamingContent) {
+      wasAtBottomRef.current = isAtBottom
+    }
+  }, [isLoading, streamingContent, isAtBottom])
+
+  useEffect(() => {
+    if (isLoading && wasAtBottomRef.current) {
+      scrollToBottom()
+    }
+  }, [isLoading, streamingContent, scrollToBottom])
+
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="relative flex-1 overflow-hidden">
       <Conversation ref={containerRef} className="h-full overflow-y-auto">
         <ConversationContent className="px-4 py-3">
-          {visibleMessages.length === 0 && (
+          {visibleMessages.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <MessageSquare className="mb-2 h-8 w-8 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">No messages yet</p>
@@ -841,31 +921,80 @@ function MessagesView({ messages }: { messages: AgentMessage[] }) {
           {visibleMessages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
+          {isLoading && (
+            <div className="flex w-full justify-start mb-3">
+              <div className="max-w-[80%] min-w-0">
+                <div className="rounded-2xl px-3.5 py-2.5 text-sm bg-muted/50">
+                  {streamingContent ? (
+                    <AgentResponse className="text-sm">{streamingContent}</AgentResponse>
+                  ) : (
+                    <ShiningText className="text-sm" text="✽ Thinking..." />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div ref={endRef} className="h-4" />
         </ConversationContent>
-        <ConversationScrollButton
-          isAtBottom={isAtBottom}
-          scrollToBottom={scrollToBottom}
-        />
       </Conversation>
+      {!isAtBottom && (
+        <Button
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 rounded-full shadow-lg"
+          onClick={() => scrollToBottom()}
+          size="icon"
+          type="button"
+          variant="outline"
+        >
+          <ArrowDown className="size-4" />
+        </Button>
+      )}
     </div>
   )
 }
 
 function MessageBubble({ message }: { message: AgentMessage }) {
   const isUser = message.role === "user"
+  const metadata = message.metadata as { attachedContexts?: AttachedContext[] } | null
+  const attachedContexts = metadata?.attachedContexts ?? []
 
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-3`}>
       <div className={`max-w-[80%] min-w-0 ${isUser ? "items-end" : "items-start"}`}>
+        {attachedContexts.length > 0 && (
+          <div className={`flex flex-wrap gap-1.5 mb-1.5 ${isUser ? "justify-end" : "justify-start"}`}>
+            {attachedContexts.map((ctx) => (
+              <div
+                key={ctx.id}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-1 text-xs"
+              >
+                {ctx.type === 'composer' ? (
+                  <svg className="h-3 w-3 text-primary/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                ) : (
+                  <MessageSquare className="h-3 w-3 text-primary/70" />
+                )}
+                <span className="font-medium text-primary/90 max-w-32 truncate">{ctx.title}</span>
+                {ctx.messageCount && (
+                  <span className="text-primary/50 text-[10px]">
+                    {ctx.messageCount} msgs
+                  </span>
+                )}
+                {ctx.wasSummarized && (
+                  <span className="text-amber-500 text-[10px]">•</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <div
           className={`rounded-2xl px-3.5 py-2.5 text-sm ${
             isUser
               ? "bg-accent text-primary-foreground"
-              : "bg-muted"
+              : "bg-muted border border-border"
           }`}
         >
-          <Response className="text-sm">{message.content}</Response>
+          <AgentResponse className="text-sm">{message.content}</AgentResponse>
         </div>
         <p className={`mt-1 px-1 text-[11px] text-muted-foreground ${isUser ? "text-right" : "text-left"}`}>
           {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}

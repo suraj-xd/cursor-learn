@@ -167,8 +167,8 @@ export function AssistantSidebar({ open, onClose, currentConversation }: Assista
     <Sidebar side="right" open={open} width="400px">
       <SidebarHeader className="justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">Assistant</span>
+          {/* <Sparkles className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">Assistant</span> */}
           {currentConversation && contextStats.tokens > 0 && (
             <CompactContext
               usedTokens={contextStats.tokens}
@@ -206,7 +206,9 @@ export function AssistantSidebar({ open, onClose, currentConversation }: Assista
               </h3>
               <p className="text-xs text-muted-foreground max-w-[280px]">
                 {currentConversation
-                  ? `I've loaded "${currentConversation.title}". Ask me to summarize, explain code, or find insights.`
+                  ? 
+                  ''
+                  // `I've loaded "${currentConversation.title}". Ask me to summarize, explain code, or find insights.`
                   : "Start a conversation to get help."}
               </p>
             </div>

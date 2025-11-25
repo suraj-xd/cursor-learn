@@ -83,11 +83,9 @@ const WorkspaceHeader = memo(function WorkspaceHeader({
         <Button
           variant={rightOpen ? "default" : "outline"}
           size="sm"
-          className="gap-1"
           onClick={onToggleRight}
         >
-          <AsteriskIcon className="w-4 h-4" />
-          Assistant
+          ✽ Assistant
         </Button>
       </div>
     </div>

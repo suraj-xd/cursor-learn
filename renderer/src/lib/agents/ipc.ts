@@ -50,6 +50,14 @@ export const agentsIpc = {
       const ipc = ensureIpc()
       return ipc.agents.chats.complete(chatId) as Promise<{ message: AgentMessage }>
     },
+    completeStream: async (chatId: string) => {
+      const ipc = ensureIpc()
+      return ipc.agents.chats.completeStream(chatId) as Promise<{ message: AgentMessage }>
+    },
+    onStreamChunk: (callback: (data: { chatId: string; chunk: string; done: boolean }) => void) => {
+      const ipc = ensureIpc()
+      return ipc.agents.chats.onStreamChunk(callback)
+    },
     updateModel: async (payload: { chatId: string; modelId: string }) => {
       const ipc = ensureIpc()
       return ipc.agents.chats.updateModel(payload) as Promise<AgentChat | null>

@@ -20,7 +20,7 @@ import {
   updateChatModel,
   updateChatTitle,
 } from './services/agent-storage'
-import { generateAssistantMessage, generateChatTitle, prepareChatContext } from './services/agent-runtime'
+import { generateAssistantMessage, generateAssistantMessageStreaming, generateChatTitle, prepareChatContext } from './services/agent-runtime'
 import {
   listWorkspaces,
   getWorkspaceDetails,
@@ -34,6 +34,7 @@ import {
 import {
   detectEnvironment,
   getUsername,
+  getAllUsernames,
   validateWorkspacePath,
   persistWorkspacePath,
   getWorkspacePathConfig,
@@ -202,6 +203,13 @@ ipcMain.handle('agents:chat:complete', async (_event, chatId: string) => {
   return await generateAssistantMessage(chatId)
 })
 
+ipcMain.handle('agents:chat:complete-stream', async (event, chatId: string) => {
+  const webContents = event.sender
+  return await generateAssistantMessageStreaming(chatId, (chunk, done) => {
+    webContents.send('agents:stream-chunk', { chatId, chunk, done })
+  })
+})
+
 ipcMain.handle('agents:chat:updateTitle', async (_event, payload: { chatId: string; title: string }) => {
   return updateChatTitle(payload)
 })
@@ -264,6 +272,10 @@ ipcMain.handle('environment:info', async () => {
 
 ipcMain.handle('environment:username', async () => {
   return await getUsername()
+})
+
+ipcMain.handle('environment:usernames:all', async () => {
+  return await getAllUsernames()
 })
 
 ipcMain.handle('pdf:generate', async (_event, payload: { markdown: string; title: string }) => {

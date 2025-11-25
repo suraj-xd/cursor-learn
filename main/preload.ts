@@ -59,6 +59,15 @@ const api = {
   environment: {
     info: () => ipcRenderer.invoke('environment:info') as Promise<EnvironmentInfo>,
     username: () => ipcRenderer.invoke('environment:username') as Promise<string>,
+    allUsernames: () => ipcRenderer.invoke('environment:usernames:all') as Promise<{
+      osUserInfo: string | null
+      envUser: string | null
+      envLogname: string | null
+      whoami: string | null
+      homeDir: string | null
+      gitConfigName: string | null
+      macRealName: string | null
+    }>,
   },
   pdf: {
     generate: async (markdown: string, title: string) => {
@@ -93,6 +102,13 @@ const api = {
       delete: (chatId: string) => ipcRenderer.invoke('agents:chats:delete', chatId) as Promise<boolean>,
       complete: (chatId: string) =>
         ipcRenderer.invoke('agents:chat:complete', chatId) as Promise<{ message: MessageRecord }>,
+      completeStream: (chatId: string) =>
+        ipcRenderer.invoke('agents:chat:complete-stream', chatId) as Promise<{ message: MessageRecord }>,
+      onStreamChunk: (callback: (data: { chatId: string; chunk: string; done: boolean }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { chatId: string; chunk: string; done: boolean }) => callback(data)
+        ipcRenderer.on('agents:stream-chunk', handler)
+        return () => ipcRenderer.removeListener('agents:stream-chunk', handler)
+      },
       updateModel: (payload: { chatId: string; modelId: string }) =>
         ipcRenderer.invoke('agents:chats:update-model', payload) as Promise<ChatRecord | null>,
       updateTitle: (payload: { chatId: string; title: string }) =>
