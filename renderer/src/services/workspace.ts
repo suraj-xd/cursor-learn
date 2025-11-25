@@ -130,6 +130,27 @@ class WorkspaceService {
       return []
     }
   }
+
+  async getConversation(workspaceId: string, conversationId: string, type: 'chat' | 'composer'): Promise<ConversationContent | null> {
+    const ipc = this.getIpc()
+    if (!ipc) return null
+
+    try {
+      return await ipc.workspace.conversation(workspaceId, conversationId, type)
+    } catch (error) {
+      console.error('Failed to fetch conversation:', error)
+      return null
+    }
+  }
+}
+
+export interface ConversationContent {
+  id: string
+  workspaceId: string
+  title: string
+  type: 'chat' | 'composer'
+  messages: Array<{ role: 'user' | 'ai'; text: string; timestamp?: number }>
+  totalTokenEstimate: number
 }
 
 export const workspaceService = WorkspaceService.getInstance()

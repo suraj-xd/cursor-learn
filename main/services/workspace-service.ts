@@ -776,6 +776,120 @@ export async function listWorkspaceLogs(): Promise<WorkspaceLog[]> {
   return logs
 }
 
+export interface ConversationContent {
+  id: string
+  workspaceId: string
+  title: string
+  type: 'chat' | 'composer'
+  messages: Array<{ role: 'user' | 'ai'; text: string; timestamp?: number }>
+  totalTokenEstimate: number
+}
+
+export async function getConversationById(
+  workspaceId: string,
+  conversationId: string,
+  conversationType: 'chat' | 'composer'
+): Promise<ConversationContent | null> {
+  const workspacePath = resolveWorkspacePath()
+
+  if (workspaceId === 'global') {
+    const globalDbPath = path.join(workspacePath, '..', 'globalStorage', 'state.vscdb')
+    if (!existsSync(globalDbPath)) return null
+
+    const db = new Database(globalDbPath, { readonly: true })
+    try {
+      const bubbleRows = db.prepare("SELECT key, value FROM cursorDiskKV WHERE key LIKE ?").all(`bubbleId:${conversationId}:%`) as Array<{ key: string; value: string }>
+      const messages: Array<{ role: 'user' | 'ai'; text: string; timestamp?: number }> = []
+
+      for (const row of bubbleRows) {
+        try {
+          const bubble = JSON.parse(row.value)
+          const text = extractBubbleText(bubble)
+          if (text) {
+            messages.push({
+              role: bubble.type === 1 ? 'user' : 'ai',
+              text,
+              timestamp: bubble.timestamp
+            })
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+      const totalText = messages.map(m => m.text).join(' ')
+
+      return {
+        id: conversationId,
+        workspaceId: 'global',
+        title: messages[0]?.text.split('\n')[0].slice(0, 50) || `Chat ${conversationId.slice(0, 8)}`,
+        type: 'chat',
+        messages,
+        totalTokenEstimate: Math.ceil(totalText.length / 3.5)
+      }
+    } finally {
+      db.close()
+    }
+  }
+
+  const dbPath = path.join(workspacePath, workspaceId, 'state.vscdb')
+  if (!existsSync(dbPath)) return null
+
+  const db = new Database(dbPath, { readonly: true })
+  try {
+    if (conversationType === 'chat') {
+      const chatResult = db.prepare(`SELECT value FROM ItemTable WHERE [key] = 'workbench.panel.aichat.view.aichat.chatdata'`).get() as { value: string } | undefined
+      if (chatResult?.value) {
+        const chatData = JSON.parse(chatResult.value)
+        const tab = chatData.tabs?.find((t: ChatTab) => t.id === conversationId)
+        if (tab) {
+          const messages = (tab.bubbles || []).map((b: { type: string; text: string; timestamp?: number }) => ({
+            role: b.type === 'user' ? 'user' as const : 'ai' as const,
+            text: b.text || '',
+            timestamp: b.timestamp
+          }))
+          const totalText = messages.map((m: { text: string }) => m.text).join(' ')
+          return {
+            id: conversationId,
+            workspaceId,
+            title: tab.title || `Chat ${conversationId.slice(0, 8)}`,
+            type: 'chat',
+            messages,
+            totalTokenEstimate: Math.ceil(totalText.length / 3.5)
+          }
+        }
+      }
+    } else {
+      const composerResult = db.prepare(`SELECT value FROM ItemTable WHERE [key] = 'composer.composerData'`).get() as { value: string } | undefined
+      if (composerResult?.value) {
+        const composerData = JSON.parse(composerResult.value)
+        const composer = composerData.allComposers?.find((c: ComposerChat) => c.composerId === conversationId)
+        if (composer) {
+          const messages = (composer.conversation || []).map((m: { type: number; text: string; timestamp?: number }) => ({
+            role: m.type === 1 ? 'user' as const : 'ai' as const,
+            text: m.text || '',
+            timestamp: m.timestamp
+          }))
+          const totalText = messages.map((m: { text: string }) => m.text).join(' ')
+          return {
+            id: conversationId,
+            workspaceId,
+            title: composer.name || composer.text?.slice(0, 50) || `Composer ${conversationId.slice(0, 8)}`,
+            type: 'composer',
+            messages,
+            totalTokenEstimate: Math.ceil(totalText.length / 3.5)
+          }
+        }
+      }
+    }
+  } finally {
+    db.close()
+  }
+
+  return null
+}
+
 export async function searchWorkspaceData(query: string, type: 'all' | 'chat' | 'composer'): Promise<SearchResult[]> {
   const workspacePath = resolveWorkspacePath()
   const results: SearchResult[] = []

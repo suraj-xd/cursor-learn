@@ -20,12 +20,11 @@ export function CollapsibleCodeBlock({ code, language, style }: CollapsibleCodeB
   const shouldCollapse = lineCount > 20
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0 max-w-full">
       <div 
-        className="overflow-hidden transition-all duration-300"
+        className="overflow-x-auto overflow-y-hidden transition-all duration-300"
         style={{
           maxHeight: !shouldCollapse || isExpanded ? 'none' : '400px',
-          // overflowY: 'auto',
         }}
       >
         <Highlighter
@@ -36,6 +35,7 @@ export function CollapsibleCodeBlock({ code, language, style }: CollapsibleCodeB
             margin: 0,
             borderRadius: '0.5rem',
           }}
+          wrapLongLines={false}
         >
           {code}
         </Highlighter>

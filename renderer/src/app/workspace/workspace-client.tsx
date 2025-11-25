@@ -248,7 +248,11 @@ function WorkspaceClientInner() {
           </div>
         </SidebarInset>
 
-        <AssistantSidebar open={rightOpen} onClose={() => setRightOpen(false)} />
+        <AssistantSidebar 
+          open={rightOpen} 
+          onClose={() => setRightOpen(false)} 
+          currentConversation={selectedChat}
+        />
       </div>
     </TooltipProvider>
   )

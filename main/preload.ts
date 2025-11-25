@@ -7,6 +7,13 @@ import type {
   SearchResult,
 } from './services/workspace-service'
 import type { EnvironmentInfo } from './services/config-service'
+import type {
+  ApiKeyRecord,
+  ChatRecord,
+  MessageRecord,
+  ChatMentionRecord,
+} from './services/agent-storage'
+import type { ChatContext } from './services/agent-runtime'
 
 type SearchType = 'all' | 'chat' | 'composer'
 
@@ -23,6 +30,15 @@ const api = {
       ipcRenderer.invoke('workspace:composer', composerId),
     search: (query: string, type: SearchType) =>
       ipcRenderer.invoke('workspace:search', { query, type }) as Promise<SearchResult[]>,
+    conversation: (workspaceId: string, conversationId: string, type: 'chat' | 'composer') =>
+      ipcRenderer.invoke('workspace:conversation', { workspaceId, conversationId, type }) as Promise<{
+        id: string
+        workspaceId: string
+        title: string
+        type: 'chat' | 'composer'
+        messages: Array<{ role: 'user' | 'ai'; text: string; timestamp?: number }>
+        totalTokenEstimate: number
+      } | null>,
   },
   config: {
     validatePath: (workspacePath: string) =>
@@ -48,6 +64,62 @@ const api = {
     generate: async (markdown: string, title: string) => {
       const buffer: Buffer = await ipcRenderer.invoke('pdf:generate', { markdown, title })
       return Uint8Array.from(buffer)
+    },
+  },
+  agents: {
+    apiKeys: {
+      list: () => ipcRenderer.invoke('agents:api-keys:list') as Promise<Array<Omit<ApiKeyRecord, 'secret'>>>,
+      save: (payload: { provider: string; secret: string; label?: string | null }) =>
+        ipcRenderer.invoke('agents:api-keys:set', payload) as Promise<Omit<ApiKeyRecord, 'secret'> | null>,
+      delete: (provider: string) => ipcRenderer.invoke('agents:api-keys:delete', provider) as Promise<boolean>,
+    },
+    chats: {
+      list: (payload?: { limit?: number; search?: string; workspaceConversationId?: string | null }) =>
+        ipcRenderer.invoke('agents:chats:list', payload) as Promise<ChatRecord[]>,
+      create: (payload: {
+        id?: string
+        title: string
+        modelId: string
+        provider: string
+        summary?: string | null
+        workspaceConversationId?: string | null
+      }) => ipcRenderer.invoke('agents:chats:create', payload) as Promise<ChatRecord>,
+      get: (chatId: string) =>
+        ipcRenderer.invoke('agents:chats:get', chatId) as Promise<{
+          chat: ChatRecord
+          messages: MessageRecord[]
+          mentions: ChatMentionRecord[]
+        } | null>,
+      delete: (chatId: string) => ipcRenderer.invoke('agents:chats:delete', chatId) as Promise<boolean>,
+      complete: (chatId: string) =>
+        ipcRenderer.invoke('agents:chat:complete', chatId) as Promise<{ message: MessageRecord }>,
+      updateModel: (payload: { chatId: string; modelId: string }) =>
+        ipcRenderer.invoke('agents:chats:update-model', payload) as Promise<ChatRecord | null>,
+      updateTitle: (payload: { chatId: string; title: string }) =>
+        ipcRenderer.invoke('agents:chat:updateTitle', payload) as Promise<ChatRecord | null>,
+      generateTitle: (payload: { chatId: string; userMessage: string }) =>
+        ipcRenderer.invoke('agents:chat:generateTitle', payload) as Promise<{ title: string }>,
+      prepareContext: (chatId: string) =>
+        ipcRenderer.invoke('agents:chat:prepareContext', chatId) as Promise<ChatContext>,
+    },
+    messages: {
+      list: (chatId: string) =>
+        ipcRenderer.invoke('agents:messages:list', chatId) as Promise<MessageRecord[]>,
+      append: (payload: {
+        id?: string
+        chatId: string
+        role: 'user' | 'assistant' | 'system'
+        content: string
+        metadata?: unknown
+        tokenUsage?: number
+        createdAt?: number
+      }) => ipcRenderer.invoke('agents:messages:append', payload) as Promise<MessageRecord>,
+    },
+    mentions: {
+      list: (chatId: string) =>
+        ipcRenderer.invoke('agents:mentions:list', chatId) as Promise<ChatMentionRecord[]>,
+      add: (payload: { chatId: string; mentionedChatId: string }) =>
+        ipcRenderer.invoke('agents:mentions:add', payload) as Promise<ChatMentionRecord[]>,
     },
   },
 }

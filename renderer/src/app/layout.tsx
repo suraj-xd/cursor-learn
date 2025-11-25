@@ -5,6 +5,7 @@ import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/toaster"
 
 const grotesk = localFont({
   src: [
@@ -52,6 +53,7 @@ export default function RootLayout({
               {children}
             </main>
             {/* <Footer /> */}
+            <Toaster />
           </TooltipProvider>
         </ThemeProvider>
       </body>
