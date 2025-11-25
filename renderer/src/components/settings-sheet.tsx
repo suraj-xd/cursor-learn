@@ -14,6 +14,8 @@ import { Label } from "./ui/label"
 import { Input } from "./ui/input"
 import { agentsIpc } from "@/lib/agents/ipc"
 import type { ProviderId } from "@/types/agents"
+import { useTheme } from "./theme-provider"
+import { UI_THEMES, type UiThemeId } from "@/styles/themes"
 
 const PROVIDERS = [
   {
@@ -79,12 +81,17 @@ const isProviderKey = (value: string): value is ProviderKey => {
 export function SettingsSheet() {
   const codeTheme = useSettingsStore((state) => state.codeTheme)
   const setCodeTheme = useSettingsStore((state) => state.setCodeTheme)
+  const { uiTheme, setUiTheme } = useTheme()
   const [providerForms, setProviderForms] = useState<Record<ProviderKey, ProviderFormState>>(createInitialProviderState)
   const [isLoadingProviders, setIsLoadingProviders] = useState(false)
 
-  const activeOption = useMemo(() => {
+  const activeCodeOption = useMemo(() => {
     return codeThemeOptions.find((option) => option.id === codeTheme) ?? codeThemeOptions[0]
   }, [codeTheme])
+
+  const activeUiTheme = useMemo(() => {
+    return UI_THEMES.find((t) => t.id === uiTheme) ?? UI_THEMES[0]
+  }, [uiTheme])
 
   useEffect(() => {
     let cancelled = false
@@ -207,8 +214,56 @@ export function SettingsSheet() {
             </header>
             <div className="space-y-4 rounded-lg border border-border/60 bg-muted/40 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Interface theme</span>
+                <span className="text-sm font-medium">Color mode</span>
                 <ThemeToggle />
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium">UI theme</div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          {activeUiTheme.preview.map((color) => (
+                            <span
+                              key={color}
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <span>{activeUiTheme.name}</span>
+                      </div>
+                      <ChevronDown className="size-4 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-60 max-h-72 overflow-y-auto">
+                    <DropdownMenuLabel>UI theme</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={uiTheme}
+                      onValueChange={(value) => setUiTheme(value as UiThemeId)}
+                    >
+                      {UI_THEMES.map((theme) => (
+                        <DropdownMenuRadioItem key={theme.id} value={theme.id}>
+                          <div className="flex w-full items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                {theme.preview.map((color) => (
+                                  <span
+                                    key={`${theme.id}-${color}`}
+                                    className="h-2.5 w-2.5 rounded-full"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                ))}
+                              </div>
+                              <span>{theme.name}</span>
+                            </div>
+                          </div>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-medium">Code theme</div>
@@ -217,7 +272,7 @@ export function SettingsSheet() {
                     <Button variant="outline" className="w-full justify-between">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1">
-                          {activeOption.preview.map((color) => (
+                          {activeCodeOption.preview.map((color) => (
                             <span
                               key={color}
                               className="h-2.5 w-2.5 rounded-full"
@@ -225,7 +280,7 @@ export function SettingsSheet() {
                             />
                           ))}
                         </div>
-                        <span>{activeOption.label}</span>
+                        <span>{activeCodeOption.label}</span>
                       </div>
                       <ChevronDown className="size-4 opacity-50" />
                     </Button>

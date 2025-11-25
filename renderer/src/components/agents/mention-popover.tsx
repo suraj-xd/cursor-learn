@@ -142,7 +142,7 @@ export function MentionPopover({
                   {conv.messageCount} msgs
                 </Badge>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
+              {/* <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
                 <span>{formatDistanceToNow(new Date(conv.timestamp), { addSuffix: true })}</span>
                 {conv.workspaceFolder && (
                   <>
@@ -150,16 +150,16 @@ export function MentionPopover({
                     <span className="truncate max-w-32">{conv.workspaceFolder.split('/').pop()}</span>
                   </>
                 )}
-              </div>
+              </div> */}
             </button>
           ))
         )}
       </div>
-      <div className="border-t border-border px-3 py-1.5 bg-muted/30">
+      {/* <div className="border-t border-border px-3 py-1.5 bg-muted/30">
         <span className="text-[10px] text-muted-foreground">
           ↑↓ navigate • Enter select • Esc close
         </span>
-      </div>
+      </div> */}
     </div>
   )
 }

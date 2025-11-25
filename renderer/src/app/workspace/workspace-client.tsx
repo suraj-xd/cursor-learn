@@ -69,7 +69,7 @@ const WorkspaceHeader = memo(function WorkspaceHeader({
       </div>
 
       <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border flex justify-start items-center gap-2">
-        <h2 className="font-semibold text-accent font-mono uppercase text-xs">
+        <h2 className="font-semibold text-primary font-mono uppercase text-xs">
           {projectName}
         </h2>
         <p className="text-xs text-green-500 uppercase font-mono">
@@ -99,17 +99,17 @@ const ChatContentTabs = memo(function ChatContentTabs() {
     <div className="flex items-center justify-between px-4 py-2 border-b border-border">
       <div className="flex items-center gap-2">
         <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-          <h2 className="font-semibold text-accent font-mono uppercase text-xs">
+          <h2 className="font-semibold text-primary font-mono uppercase text-xs">
             Overview
           </h2>
         </div>
         <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-          <h2 className="font-semibold text-accent font-mono uppercase text-xs">
+          <h2 className="font-semibold text-primary font-mono uppercase text-xs">
             Learnings
           </h2>
         </div>
         <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-          <h2 className="font-semibold text-accent font-mono uppercase text-xs">
+          <h2 className="font-semibold text-primary font-mono uppercase text-xs">
             Sources
           </h2>
         </div>

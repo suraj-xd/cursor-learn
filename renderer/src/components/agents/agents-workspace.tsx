@@ -593,12 +593,8 @@ export function AgentsWorkspace() {
   const selectedChatTitle = bundle?.chat.title ?? "Select a chat"
 
   return (
-    <div className="flex h-[calc(100vh-120px)] gap-4 rounded-xl border border-border bg-card p-4">
+    <div className="flex h-[calc(100vh-58px)] gap-4 rounded-xl border border-border bg-card p-4">
       <aside className="flex w-64 shrink-0 flex-col gap-3">
-        <div className="space-y-1">
-          <h1 className="text-sm font-semibold">Agents</h1>
-          <p className="text-xs text-muted-foreground">Local-first AI chats</p>
-        </div>
         <Button size="sm" className="w-full text-sm" onClick={handleCreateChat} disabled={isCreatingChat}>
           {isCreatingChat ? (
             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -865,7 +861,7 @@ function MessageBubble({ message }: { message: AgentMessage }) {
         <div
           className={`rounded-2xl px-3.5 py-2.5 text-sm ${
             isUser
-              ? "bg-primary text-primary-foreground"
+              ? "bg-accent text-primary-foreground"
               : "bg-muted"
           }`}
         >

@@ -200,7 +200,7 @@ export function AssistantSidebar({ open, onClose, currentConversation }: Assista
         ) : visibleMessages.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center p-6">
-              <Sparkles className="h-8 w-8 mx-auto mb-3 text-primary/50" />
+              {/* <Sparkles className="h-8 w-8 mx-auto mb-3 text-primary/50" /> */}
               <h3 className="text-sm font-medium mb-1">
                 {currentConversation ? "Ask about this conversation" : "Hello!"}
               </h3>

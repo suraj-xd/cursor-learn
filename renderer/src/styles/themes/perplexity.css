@@ -1,0 +1,75 @@
+[data-ui-theme="perplexity"] {
+  --background: #FCFCF9;
+  --foreground: #14343B;
+  --card: #fffffc;
+  --card-foreground: #000000;
+  --popover: #fffffc;
+  --popover-foreground: #000000;
+  --primary: #007b86;
+  --primary-foreground: #ffffff;
+  --secondary: #d7e0e2;
+  --secondary-foreground: #14343B;
+  --muted: #e3e9ea;
+  --muted-foreground: #626e71;
+  --accent: #e0efef;
+  --accent-foreground: #000000;
+  --destructive: #d06b00;
+  --destructive-foreground: #000000;
+  --border: #E6E8E6;
+  --input: #FCFCF9;
+  --ring: #3699a5;
+  --chart-1: #0b9aa6;
+  --chart-2: #4271af;
+  --chart-3: #6ccbd5;
+  --chart-4: #1e4475;
+  --chart-5: #005e68;
+  --sidebar: #F3F3EE;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #007b86;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #fffffc;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: #cfd7d9;
+  --sidebar-ring: #3699a5;
+  --radius: 0.75rem;
+  --letter-spacing: 0em;
+  --font-sans: "Rubik", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Merriweather", Georgia, Cambria, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+[data-ui-theme="perplexity"].dark {
+  --background: #191A1A;
+  --foreground: #F8FAFA;
+  --card: #191A1A;
+  --card-foreground: #ffffff;
+  --popover: #121313;
+  --popover-foreground: #ffffff;
+  --primary: #32b9c6;
+  --primary-foreground: #000000;
+  --secondary: #3B4141;
+  --secondary-foreground: #F8FAFA;
+  --muted: #2D3232;
+  --muted-foreground: #a1a3a3;
+  --accent: #18333a;
+  --accent-foreground: #ffffff;
+  --destructive: #de945f;
+  --destructive-foreground: #000000;
+  --border: #2a2e2e;
+  --input: #1F2121;
+  --ring: #0099a6;
+  --chart-1: #0b9aa6;
+  --chart-2: #6986a0;
+  --chart-3: #6ccbd5;
+  --chart-4: #395065;
+  --chart-5: #005e68;
+  --sidebar: #1F2121;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #32b9c6;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #101111;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #232525;
+  --sidebar-ring: #0099a6;
+}
+

@@ -99,7 +99,7 @@ const WorkspaceRow = memo(function WorkspaceRow({ project }: WorkspaceRowProps) 
   return (
     <div className="border border-border bg-muted/50 dark:bg-muted/10 rounded-lg p-2">
       <div className="flex items-center gap-3">
-        <DiamondIcon className="w-3 h-3 text-accent shrink-0 ml-1" />
+        <DiamondIcon className="w-3 h-3 text-primary shrink-0 ml-1" />
         <Link 
           href={`/workspace?id=${project.id}`}
           className="font-medium hover:underline flex-1 truncate"

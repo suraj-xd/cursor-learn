@@ -1,45 +1,84 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from "react"
-
-type Theme = "dark" | "light"
+import type { ColorMode, UiThemeId } from "@/styles/themes"
 
 type ThemeProviderProps = {
   children: React.ReactNode
-  defaultTheme?: Theme
 }
 
 type ThemeProviderState = {
-  theme: Theme
-  setTheme: (theme: Theme) => void
+  colorMode: ColorMode
+  setColorMode: (mode: ColorMode) => void
+  uiTheme: UiThemeId
+  setUiTheme: (theme: UiThemeId) => void
+  resolvedColorMode: "light" | "dark"
 }
 
 const initialState: ThemeProviderState = {
-  theme: "dark",
-  setTheme: () => null,
+  colorMode: "system",
+  setColorMode: () => null,
+  uiTheme: "retro-boy",
+  setUiTheme: () => null,
+  resolvedColorMode: "dark",
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
-export function ThemeProvider({
-  children,
-}: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') as Theme || "dark"
+function getSystemColorMode(): "light" | "dark" {
+  if (typeof window === "undefined") return "dark"
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+}
+
+export function ThemeProvider({ children }: ThemeProviderProps) {
+  const [colorMode, setColorMode] = useState<ColorMode>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("color-mode") as ColorMode) || "system"
     }
-    return "dark"
+    return "system"
+  })
+
+  const [uiTheme, setUiTheme] = useState<UiThemeId>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("ui-theme") as UiThemeId) || "retro-boy"
+    }
+    return "retro-boy"
+  })
+
+  const [resolvedColorMode, setResolvedColorMode] = useState<"light" | "dark">(() => {
+    if (colorMode === "system") return getSystemColorMode()
+    return colorMode
   })
 
   useEffect(() => {
     const root = window.document.documentElement
-    root.classList.remove("light", "dark")
-    root.classList.add(theme)
-    localStorage.setItem('theme', theme)
-  }, [theme])
+
+    const applyTheme = () => {
+      const resolved = colorMode === "system" ? getSystemColorMode() : colorMode
+      setResolvedColorMode(resolved)
+
+      root.classList.remove("light", "dark")
+      root.classList.add(resolved)
+
+      root.setAttribute("data-ui-theme", uiTheme)
+    }
+
+    applyTheme()
+    localStorage.setItem("color-mode", colorMode)
+    localStorage.setItem("ui-theme", uiTheme)
+
+    if (colorMode === "system") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+      const handleChange = () => applyTheme()
+      mediaQuery.addEventListener("change", handleChange)
+      return () => mediaQuery.removeEventListener("change", handleChange)
+    }
+  }, [colorMode, uiTheme])
 
   return (
-    <ThemeProviderContext.Provider value={{ theme, setTheme }}>
+    <ThemeProviderContext.Provider
+      value={{ colorMode, setColorMode, uiTheme, setUiTheme, resolvedColorMode }}
+    >
       {children}
     </ThemeProviderContext.Provider>
   )
@@ -52,4 +91,4 @@ export const useTheme = () => {
     throw new Error("useTheme must be used within a ThemeProvider")
 
   return context
-} 
+}

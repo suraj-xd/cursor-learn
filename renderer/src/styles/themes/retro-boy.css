@@ -1,0 +1,75 @@
+[data-ui-theme="retro-boy"] {
+  --background: #173C0B;
+  --foreground: #D9FF52;
+  --card: #173C0B;
+  --card-foreground: #D9FF52;
+  --popover: #1B4C12;
+  --popover-foreground: #D9FF52;
+  --primary: #D9FF52;
+  --primary-foreground: #173C0B;
+  --secondary: #00FF00;
+  --secondary-foreground: #173C0B;
+  --muted: #6CA214;
+  --muted-foreground: #B7D648;
+  --accent: #6CA214;
+  --accent-foreground: #D9FF52;
+  --destructive: #00FF00;
+  --destructive-foreground: #173C0B;
+  --border: #6CA214;
+  --input: #9DCA25;
+  --ring: #D9FF52;
+  --chart-1: #D9FF52;
+  --chart-2: #00FF00;
+  --chart-3: #6CA214;
+  --chart-4: #9DCA25;
+  --chart-5: #1B4C12;
+  --sidebar: #173C0B;
+  --sidebar-foreground: #D9FF52;
+  --sidebar-primary: #D9FF52;
+  --sidebar-primary-foreground: #173C0B;
+  --sidebar-accent: #1B4C12;
+  --sidebar-accent-foreground: #D9FF52;
+  --sidebar-border: #6CA214;
+  --sidebar-ring: #D9FF52;
+  --radius: 0px;
+  --letter-spacing: 0em;
+  --font-sans: "Share Tech Mono", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Roboto Slab", Georgia, Cambria, "Times New Roman", serif;
+  --font-mono: "Share Tech Mono", JetBrains Mono, ui-monospace, SFMono-Regular, monospace;
+}
+
+[data-ui-theme="retro-boy"].dark {
+  --background: #091B04;
+  --foreground: #D9FF52;
+  --card: #091B04;
+  --card-foreground: #D9FF52;
+  --popover: #14340A;
+  --popover-foreground: #D9FF52;
+  --primary: #D9FF52;
+  --primary-foreground: #091B04;
+  --secondary: #00FF00;
+  --secondary-foreground: #091B04;
+  --muted: #547A12;
+  --muted-foreground: #B7D648;
+  --accent: #6CA214;
+  --accent-foreground: #D9FF52;
+  --destructive: #00FF00;
+  --destructive-foreground: #091B04;
+  --border: #547A12;
+  --input: #8BC53F;
+  --ring: #D9FF52;
+  --chart-1: #D9FF52;
+  --chart-2: #00FF00;
+  --chart-3: #6CA214;
+  --chart-4: #9DCA25;
+  --chart-5: #14340A;
+  --sidebar: #091B04;
+  --sidebar-foreground: #D9FF52;
+  --sidebar-primary: #D9FF52;
+  --sidebar-primary-foreground: #091B04;
+  --sidebar-accent: #14340A;
+  --sidebar-accent-foreground: #D9FF52;
+  --sidebar-border: #547A12;
+  --sidebar-ring: #D9FF52;
+}
+

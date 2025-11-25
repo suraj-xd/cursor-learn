@@ -80,7 +80,7 @@ export default function ConfigPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-xl font-medium text-accent my-8 border-b border-border pb-2 flex items-center gap-2">
+      <h1 className="text-xl font-medium text-primary my-8 border-b border-border pb-2 flex items-center gap-2">
         <BackButton />
         Configuration
       </h1>

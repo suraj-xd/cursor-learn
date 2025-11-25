@@ -42,11 +42,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-ui-theme="retro-boy">
       <body
         className={`${grotesk.variable} ${berkeleyMono.variable} ${newsreader.variable} min-h-screen flex flex-col`}
       >
-        <ThemeProvider defaultTheme="dark">
+        <ThemeProvider>
           <TooltipProvider>
             <Navbar />
             <main className="flex-1 bg-background">
