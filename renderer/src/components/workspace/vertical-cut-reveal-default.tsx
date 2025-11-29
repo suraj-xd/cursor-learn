@@ -90,8 +90,7 @@ export default function Preview() {
           containerClassName="font-medium  text-black dark:text-white font-mono"
           wordLevelClassName=""
         >
-          {` 
-AGENTIC_CODING`}
+          {`AGENTIC_CODING`}
         </VerticalCutReveal>
         <VerticalCutReveal
           splitBy="characters"
