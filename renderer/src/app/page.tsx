@@ -20,7 +20,7 @@ export default function Home() {
         <Preview/>
         <motion.p 
         viewport={{ once: true }}
-          className="text-sm text-muted-foreground"
+          className="text-sm text-muted-foreground pt-2.5"
           initial={hasAnimated ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ 
@@ -30,7 +30,8 @@ export default function Home() {
           }}
           onAnimationComplete={() => setHasAnimated(true)}
         >
-          Browse your Cursor chat conversations by project. Click on a project to
+          {/* Browse your Cursor chat conversations by project.  */}
+          Click on a project to
           view its conversations.
         </motion.p>
         <motion.div

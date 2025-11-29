@@ -93,7 +93,7 @@ export function MentionPopover({
     <div
       ref={popoverRef}
       className="absolute z-50 w-80 rounded-lg border border-border bg-popover shadow-lg"
-      style={{ top: position.top, left: position.left }}
+      style={{ top: position.top - 40, left: position.left }}
     >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <Search className="h-4 w-4 text-muted-foreground" />

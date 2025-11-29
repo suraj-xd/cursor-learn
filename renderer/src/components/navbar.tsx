@@ -20,9 +20,9 @@ export function Navbar() {
     <nav className="w-full relative">
       <div className="flex h-fit pt-2 items-center px-4 justify-between w-full">
         <Link href="/" className="flex items-center space-x-1">
-          <SquareMousePointerIcon className="w-4 h-4" />
+          {/* <SquareMousePointerIcon className="w-4 h-4" /> */}
 
-          <span className="text-sm">Cursor Learn</span>
+          <span className="text-sm pb-1.5"><span className="text-xl"> ⁕ </span> Cursor Learn</span>
         </Link>
         <div className="absolute top-1 left-0 w-full h-full flex justify-center items-center">
           <div className="flex items-center space-x-1">
