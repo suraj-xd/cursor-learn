@@ -1,10 +1,10 @@
 "use client"
 
-import { memo, useEffect, useCallback, Suspense, useRef } from 'react'
+import { memo, useEffect, useCallback, Suspense, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
-import { ArrowLeft, AsteriskIcon, MessageSquareOff, FolderOpen } from 'lucide-react'
+import { ArrowLeft, MessageSquareOff, FolderOpen, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { Loading } from '@/components/ui/loading'
 import { DownloadMenu } from '@/components/download-menu'
@@ -16,6 +16,10 @@ import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useWorkspaceDetailStore, selectSelectedChat, workspaceDetailActions } from '@/store/workspace'
 import { ChatView } from '@/components/workspace/chat-view'
+import { CompactedChatView } from '@/components/workspace/compacted-chat-view'
+import { cn } from '@/lib/utils'
+
+type ContentTab = 'overview' | 'learnings' | 'sources' | 'compacted' | 'raw'
 
 const ChatViewSkeleton = memo(function ChatViewSkeleton() {
   return (
@@ -92,31 +96,40 @@ const WorkspaceHeader = memo(function WorkspaceHeader({
   )
 })
 
-const ChatContentTabs = memo(function ChatContentTabs() {
+const ChatContentTabs = memo(function ChatContentTabs({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: ContentTab
+  onTabChange: (tab: ContentTab) => void
+}) {
+  const tabClass = (tab: ContentTab) =>
+    cn(
+      'px-4 py-2 rounded-lg border cursor-pointer transition-colors',
+      activeTab === tab
+        ? 'bg-primary text-primary-foreground border-primary'
+        : 'bg-muted/50 dark:bg-muted/10 hover:bg-muted'
+    )
+
   return (
     <div className="flex items-center justify-between px-4 py-2 border-b border-border">
       <div className="flex items-center gap-2">
-        <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-          <h2 className="font-semibold text-primary font-mono uppercase text-xs">
-            Overview
+        <button type="button" onClick={() => onTabChange('overview')} className={tabClass('overview')}>
+          <h2 className="font-semibold font-mono uppercase text-xs">Overview</h2>
+        </button>
+        <button type="button" onClick={() => onTabChange('learnings')} className={tabClass('learnings')}>
+          <h2 className="font-semibold font-mono uppercase text-xs">Learnings</h2>
+        </button>
+        <button type="button" onClick={() => onTabChange('compacted')} className={tabClass('compacted')}>
+          <h2 className="font-semibold font-mono uppercase text-xs flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3" />
+            Compacted Chat
           </h2>
-        </div>
-        <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-          <h2 className="font-semibold text-primary font-mono uppercase text-xs">
-            Learnings
-          </h2>
-        </div>
-        <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-          <h2 className="font-semibold text-primary font-mono uppercase text-xs">
-            Sources
-          </h2>
-        </div>
+        </button>
       </div>
-      <div className="bg-muted/50 dark:bg-muted/10 px-4 py-2 rounded-lg border">
-        <h2 className="font-semibold text-primary font-mono uppercase text-xs">
-          Raw Chat History
-        </h2>
-      </div>
+      <button type="button" onClick={() => onTabChange('raw')} className={tabClass('raw')}>
+        <h2 className="font-semibold font-mono uppercase text-xs">Raw Chat History</h2>
+      </button>
     </div>
   )
 })
@@ -163,6 +176,7 @@ function WorkspaceClientInner() {
   const workspaceId = searchParams.get('id')
   const initialTab = searchParams.get('tab')
   const initializedRef = useRef<string | null>(null)
+  const [activeContentTab, setActiveContentTab] = useState<ContentTab>('raw')
 
   const {
     leftOpen,
@@ -233,11 +247,26 @@ function WorkspaceClientInner() {
           <div className="flex-1 overflow-hidden">
             {selectedChat ? (
               <div className="h-full flex flex-col">
-                <ChatContentTabs />
+                <ChatContentTabs activeTab={activeContentTab} onTabChange={setActiveContentTab} />
                 <div className="flex-1 overflow-hidden">
-                  <Suspense fallback={<ChatViewSkeleton />}>
-                    <ChatView chat={selectedChat} />
-                  </Suspense>
+                  {activeContentTab === 'compacted' ? (
+                    <Suspense fallback={<ChatViewSkeleton />}>
+                      <CompactedChatView
+                        workspaceId={workspaceId ?? ''}
+                        conversationId={selectedChat.id}
+                        conversationTitle={selectedChat.title}
+                        bubbles={selectedChat.bubbles}
+                      />
+                    </Suspense>
+                  ) : activeContentTab === 'raw' ? (
+                    <Suspense fallback={<ChatViewSkeleton />}>
+                      <ChatView chat={selectedChat} />
+                    </Suspense>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <p className="text-sm">{activeContentTab.charAt(0).toUpperCase() + activeContentTab.slice(1)} view coming soon</p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -250,6 +279,7 @@ function WorkspaceClientInner() {
           open={rightOpen} 
           onClose={() => setRightOpen(false)} 
           currentConversation={selectedChat}
+          workspaceId={workspaceId ?? undefined}
         />
       </div>
     </TooltipProvider>

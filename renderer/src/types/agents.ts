@@ -1,4 +1,4 @@
-export type ProviderId = 'openai' | 'google' | 'openrouter' | 'claude' | (string & {})
+export type ProviderId = 'openai' | 'google' | 'openrouter' | 'anthropic' | (string & {})
 
 export type AgentApiKeyMetadata = {
   provider: ProviderId

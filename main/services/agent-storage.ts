@@ -47,6 +47,52 @@ export type ContextSummaryRecord = {
   updatedAt: number
 }
 
+export type CompactStrategy = 'full_context' | 'chunked_parallel' | 'hierarchical'
+export type CompactStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+export type CompactStep = 'analyzing' | 'chunking' | 'mapping' | 'reducing' | 'finalizing'
+
+export type CompactedChatRecord = {
+  id: string
+  workspaceId: string
+  conversationId: string
+  conversationTitle: string | null
+  compactedContent: string
+  structuredData: unknown
+  originalTokenCount: number | null
+  compactedTokenCount: number | null
+  compressionRatio: number | null
+  modelUsed: string
+  strategyUsed: CompactStrategy
+  chunkCount: number
+  status: string
+  metadata: unknown
+  createdAt: number
+  updatedAt: number
+}
+
+export type CompactSessionRecord = {
+  id: string
+  compactedChatId: string | null
+  workspaceId: string
+  conversationId: string
+  status: CompactStatus
+  progress: number
+  currentStep: CompactStep | null
+  chunksTotal: number
+  chunksProcessed: number
+  logs: unknown[]
+  error: string | null
+  startedAt: number
+  completedAt: number | null
+}
+
+export type CompactSessionLog = {
+  timestamp: number
+  level: 'info' | 'warn' | 'error' | 'debug'
+  message: string
+  data?: unknown
+}
+
 const TIMESTAMP = () => Date.now()
 
 const serialize = (value: unknown) => JSON.stringify(value ?? null)
@@ -480,4 +526,354 @@ export const deleteContextSummary = (chatId: string): void => {
     database.prepare(`DELETE FROM context_summaries WHERE chat_id = ?`)
   )
   stmt.run(chatId)
+}
+
+export const createCompactedChat = ({
+  id = randomUUID(),
+  workspaceId,
+  conversationId,
+  conversationTitle,
+  compactedContent,
+  structuredData,
+  originalTokenCount,
+  compactedTokenCount,
+  compressionRatio,
+  modelUsed,
+  strategyUsed,
+  chunkCount = 1,
+  status = 'completed',
+  metadata,
+}: {
+  id?: string
+  workspaceId: string
+  conversationId: string
+  conversationTitle?: string | null
+  compactedContent: string
+  structuredData?: unknown
+  originalTokenCount?: number | null
+  compactedTokenCount?: number | null
+  compressionRatio?: number | null
+  modelUsed: string
+  strategyUsed: CompactStrategy
+  chunkCount?: number
+  status?: string
+  metadata?: unknown
+}): CompactedChatRecord => {
+  const now = TIMESTAMP()
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO compacted_chats (
+         id, workspace_id, conversation_id, conversation_title, compacted_content,
+         structured_data, original_token_count, compacted_token_count, compression_ratio,
+         model_used, strategy_used, chunk_count, status, metadata, created_at, updated_at
+       ) VALUES (
+         @id, @workspaceId, @conversationId, @conversationTitle, @compactedContent,
+         @structuredData, @originalTokenCount, @compactedTokenCount, @compressionRatio,
+         @modelUsed, @strategyUsed, @chunkCount, @status, @metadata, @createdAt, @updatedAt
+       )
+       ON CONFLICT(workspace_id, conversation_id) DO UPDATE SET
+         conversation_title = excluded.conversation_title,
+         compacted_content = excluded.compacted_content,
+         structured_data = excluded.structured_data,
+         original_token_count = excluded.original_token_count,
+         compacted_token_count = excluded.compacted_token_count,
+         compression_ratio = excluded.compression_ratio,
+         model_used = excluded.model_used,
+         strategy_used = excluded.strategy_used,
+         chunk_count = excluded.chunk_count,
+         status = excluded.status,
+         metadata = excluded.metadata,
+         updated_at = excluded.updated_at
+       RETURNING
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         conversation_title as conversationTitle, compacted_content as compactedContent,
+         structured_data as structuredData, original_token_count as originalTokenCount,
+         compacted_token_count as compactedTokenCount, compression_ratio as compressionRatio,
+         model_used as modelUsed, strategy_used as strategyUsed, chunk_count as chunkCount,
+         status, metadata, created_at as createdAt, updated_at as updatedAt`
+    )
+  )
+
+  const result = stmt.get({
+    id,
+    workspaceId,
+    conversationId,
+    conversationTitle: conversationTitle ?? null,
+    compactedContent,
+    structuredData: serialize(structuredData),
+    originalTokenCount: originalTokenCount ?? null,
+    compactedTokenCount: compactedTokenCount ?? null,
+    compressionRatio: compressionRatio ?? null,
+    modelUsed,
+    strategyUsed,
+    chunkCount,
+    status,
+    metadata: serialize(metadata),
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  return {
+    ...result,
+    structuredData: deserialize(result.structuredData),
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const getCompactedChat = (id: string): CompactedChatRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, workspace_id as workspaceId, conversation_id as conversationId,
+              conversation_title as conversationTitle, compacted_content as compactedContent,
+              structured_data as structuredData, original_token_count as originalTokenCount,
+              compacted_token_count as compactedTokenCount, compression_ratio as compressionRatio,
+              model_used as modelUsed, strategy_used as strategyUsed, chunk_count as chunkCount,
+              status, metadata, created_at as createdAt, updated_at as updatedAt
+       FROM compacted_chats WHERE id = ?`
+    )
+  )
+
+  const result = stmt.get(id)
+  if (!result) return null
+
+  return {
+    ...result,
+    structuredData: deserialize(result.structuredData),
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const getCompactedChatByConversation = (
+  workspaceId: string,
+  conversationId: string
+): CompactedChatRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, workspace_id as workspaceId, conversation_id as conversationId,
+              conversation_title as conversationTitle, compacted_content as compactedContent,
+              structured_data as structuredData, original_token_count as originalTokenCount,
+              compacted_token_count as compactedTokenCount, compression_ratio as compressionRatio,
+              model_used as modelUsed, strategy_used as strategyUsed, chunk_count as chunkCount,
+              status, metadata, created_at as createdAt, updated_at as updatedAt
+       FROM compacted_chats WHERE workspace_id = ? AND conversation_id = ?`
+    )
+  )
+
+  const result = stmt.get(workspaceId, conversationId)
+  if (!result) return null
+
+  return {
+    ...result,
+    structuredData: deserialize(result.structuredData),
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const deleteCompactedChat = (id: string): void => {
+  const stmt = dbStatement((database) =>
+    database.prepare(`DELETE FROM compacted_chats WHERE id = ?`)
+  )
+  stmt.run(id)
+}
+
+export const createCompactSession = ({
+  id = randomUUID(),
+  workspaceId,
+  conversationId,
+  status = 'pending',
+}: {
+  id?: string
+  workspaceId: string
+  conversationId: string
+  status?: CompactStatus
+}): CompactSessionRecord => {
+  const now = TIMESTAMP()
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO compact_sessions (
+         id, compacted_chat_id, workspace_id, conversation_id, status,
+         progress, current_step, chunks_total, chunks_processed, logs, error, started_at, completed_at
+       ) VALUES (
+         @id, NULL, @workspaceId, @conversationId, @status,
+         0, NULL, 0, 0, @logs, NULL, @startedAt, NULL
+       )
+       RETURNING
+         id, compacted_chat_id as compactedChatId, workspace_id as workspaceId,
+         conversation_id as conversationId, status, progress, current_step as currentStep,
+         chunks_total as chunksTotal, chunks_processed as chunksProcessed,
+         logs, error, started_at as startedAt, completed_at as completedAt`
+    )
+  )
+
+  const result = stmt.get({
+    id,
+    workspaceId,
+    conversationId,
+    status,
+    logs: serialize([]),
+    startedAt: now,
+  })
+
+  return {
+    ...result,
+    logs: deserialize(result.logs) ?? [],
+  }
+}
+
+export const getCompactSession = (id: string): CompactSessionRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, compacted_chat_id as compactedChatId, workspace_id as workspaceId,
+              conversation_id as conversationId, status, progress, current_step as currentStep,
+              chunks_total as chunksTotal, chunks_processed as chunksProcessed,
+              logs, error, started_at as startedAt, completed_at as completedAt
+       FROM compact_sessions WHERE id = ?`
+    )
+  )
+
+  const result = stmt.get(id)
+  if (!result) return null
+
+  return {
+    ...result,
+    logs: deserialize(result.logs) ?? [],
+  }
+}
+
+export const getActiveCompactSession = (
+  workspaceId: string,
+  conversationId: string
+): CompactSessionRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, compacted_chat_id as compactedChatId, workspace_id as workspaceId,
+              conversation_id as conversationId, status, progress, current_step as currentStep,
+              chunks_total as chunksTotal, chunks_processed as chunksProcessed,
+              logs, error, started_at as startedAt, completed_at as completedAt
+       FROM compact_sessions
+       WHERE workspace_id = ? AND conversation_id = ? AND status IN ('pending', 'processing')
+       ORDER BY started_at DESC LIMIT 1`
+    )
+  )
+
+  const result = stmt.get(workspaceId, conversationId)
+  if (!result) return null
+
+  return {
+    ...result,
+    logs: deserialize(result.logs) ?? [],
+  }
+}
+
+export const updateCompactSession = ({
+  id,
+  status,
+  progress,
+  currentStep,
+  chunksTotal,
+  chunksProcessed,
+  compactedChatId,
+  error,
+}: {
+  id: string
+  status?: CompactStatus
+  progress?: number
+  currentStep?: CompactStep | null
+  chunksTotal?: number
+  chunksProcessed?: number
+  compactedChatId?: string | null
+  error?: string | null
+}): CompactSessionRecord | null => {
+  const updates: string[] = []
+  const params: Record<string, unknown> = { id }
+
+  if (status !== undefined) {
+    updates.push('status = @status')
+    params.status = status
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      updates.push('completed_at = @completedAt')
+      params.completedAt = TIMESTAMP()
+    }
+  }
+  if (progress !== undefined) {
+    updates.push('progress = @progress')
+    params.progress = progress
+  }
+  if (currentStep !== undefined) {
+    updates.push('current_step = @currentStep')
+    params.currentStep = currentStep
+  }
+  if (chunksTotal !== undefined) {
+    updates.push('chunks_total = @chunksTotal')
+    params.chunksTotal = chunksTotal
+  }
+  if (chunksProcessed !== undefined) {
+    updates.push('chunks_processed = @chunksProcessed')
+    params.chunksProcessed = chunksProcessed
+  }
+  if (compactedChatId !== undefined) {
+    updates.push('compacted_chat_id = @compactedChatId')
+    params.compactedChatId = compactedChatId
+  }
+  if (error !== undefined) {
+    updates.push('error = @error')
+    params.error = error
+  }
+
+  if (updates.length === 0) return getCompactSession(id)
+
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `UPDATE compact_sessions SET ${updates.join(', ')}
+       WHERE id = @id
+       RETURNING
+         id, compacted_chat_id as compactedChatId, workspace_id as workspaceId,
+         conversation_id as conversationId, status, progress, current_step as currentStep,
+         chunks_total as chunksTotal, chunks_processed as chunksProcessed,
+         logs, error, started_at as startedAt, completed_at as completedAt`
+    )
+  )
+
+  const result = stmt.get(params)
+  if (!result) return null
+
+  return {
+    ...result,
+    logs: deserialize(result.logs) ?? [],
+  }
+}
+
+export const appendCompactSessionLog = (
+  id: string,
+  log: CompactSessionLog
+): CompactSessionRecord | null => {
+  const session = getCompactSession(id)
+  if (!session) return null
+
+  const logs = [...session.logs, log]
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `UPDATE compact_sessions SET logs = @logs WHERE id = @id
+       RETURNING
+         id, compacted_chat_id as compactedChatId, workspace_id as workspaceId,
+         conversation_id as conversationId, status, progress, current_step as currentStep,
+         chunks_total as chunksTotal, chunks_processed as chunksProcessed,
+         logs, error, started_at as startedAt, completed_at as completedAt`
+    )
+  )
+
+  const result = stmt.get({ id, logs: serialize(logs) })
+  if (!result) return null
+
+  return {
+    ...result,
+    logs: deserialize(result.logs) ?? [],
+  }
+}
+
+export const deleteCompactSession = (id: string): void => {
+  const stmt = dbStatement((database) =>
+    database.prepare(`DELETE FROM compact_sessions WHERE id = ?`)
+  )
+  stmt.run(id)
 }

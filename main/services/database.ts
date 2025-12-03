@@ -61,6 +61,49 @@ CREATE TABLE IF NOT EXISTS context_summaries (
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS compacted_chats (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  conversation_title TEXT,
+  compacted_content TEXT NOT NULL,
+  structured_data TEXT,
+  original_token_count INTEGER,
+  compacted_token_count INTEGER,
+  compression_ratio REAL,
+  model_used TEXT NOT NULL,
+  strategy_used TEXT NOT NULL,
+  chunk_count INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'completed',
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, conversation_id)
+);
+
+CREATE TABLE IF NOT EXISTS compact_sessions (
+  id TEXT PRIMARY KEY,
+  compacted_chat_id TEXT,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  progress INTEGER DEFAULT 0,
+  current_step TEXT,
+  chunks_total INTEGER DEFAULT 0,
+  chunks_processed INTEGER DEFAULT 0,
+  logs TEXT,
+  error TEXT,
+  started_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  FOREIGN KEY (compacted_chat_id) REFERENCES compacted_chats(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_compacted_chats_lookup
+ON compacted_chats (workspace_id, conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_compact_sessions_status
+ON compact_sessions (status);
 `
 
 export function initAgentDatabase(dbFileName = 'agents.db'): BetterSqliteDatabase {

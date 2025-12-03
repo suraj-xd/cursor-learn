@@ -12,6 +12,8 @@ import type {
   ChatRecord,
   MessageRecord,
   ChatMentionRecord,
+  CompactedChatRecord,
+  CompactSessionRecord,
 } from './services/agent-storage'
 import type { ChatContext } from './services/agent-runtime'
 
@@ -137,6 +139,58 @@ const api = {
       add: (payload: { chatId: string; mentionedChatId: string }) =>
         ipcRenderer.invoke('agents:mentions:add', payload) as Promise<ChatMentionRecord[]>,
     },
+  },
+  compact: {
+    start: (payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+    }) =>
+      ipcRenderer.invoke('compact:start', payload) as Promise<{
+        session: CompactSessionRecord
+        compactedChat: CompactedChatRecord
+      }>,
+    cancel: (sessionId: string) =>
+      ipcRenderer.invoke('compact:cancel', sessionId) as Promise<CompactSessionRecord | null>,
+    get: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('compact:get', payload) as Promise<CompactedChatRecord | null>,
+    getSessionStatus: (sessionId: string) =>
+      ipcRenderer.invoke('compact:session:status', sessionId) as Promise<CompactSessionRecord | null>,
+    getActiveSession: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('compact:session:active', payload) as Promise<CompactSessionRecord | null>,
+    onProgress: (
+      callback: (data: {
+        sessionId: string
+        workspaceId: string
+        conversationId: string
+        status: string
+        progress: number
+        currentStep: string | null
+        chunksTotal: number
+        chunksProcessed: number
+      }) => void
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          sessionId: string
+          workspaceId: string
+          conversationId: string
+          status: string
+          progress: number
+          currentStep: string | null
+          chunksTotal: number
+          chunksProcessed: number
+        }
+      ) => callback(data)
+      ipcRenderer.on('compact:progress', handler)
+      return () => ipcRenderer.removeListener('compact:progress', handler)
+    },
+    getSuggestions: (compactedContent: string) =>
+      ipcRenderer.invoke('compact:suggestions', compactedContent) as Promise<
+        Array<{ question: string; icon: string }>
+      >,
   },
 }
 

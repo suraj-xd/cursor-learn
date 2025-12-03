@@ -19,11 +19,16 @@ type TitleResult = {
 
 const TITLE_MODEL = 'gpt-4o-mini'
 
-const SUPPORTED_PROVIDERS = ['openai'] as const
+const SUPPORTED_PROVIDERS = ['openai', 'google', 'anthropic'] as const
 
 const isSupportedProvider = (provider: string): provider is (typeof SUPPORTED_PROVIDERS)[number] => {
   return SUPPORTED_PROVIDERS.includes(provider as (typeof SUPPORTED_PROVIDERS)[number])
 }
+
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
+const ANTHROPIC_API_BASE = 'https://api.anthropic.com/v1'
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
 
 export async function generateAssistantMessage(chatId: string): Promise<CompletionResult> {
   const chat = getChatById(chatId)
@@ -37,6 +42,14 @@ export async function generateAssistantMessage(chatId: string): Promise<Completi
 
   if (chat.provider === 'openai') {
     return runOpenAICompletion(chat)
+  }
+
+  if (chat.provider === 'google') {
+    return runGeminiCompletion(chat)
+  }
+
+  if (chat.provider === 'anthropic') {
+    return runAnthropicCompletion(chat)
   }
 
   throw new Error('No provider handler found')
@@ -121,6 +134,14 @@ export async function generateAssistantMessageStreaming(
 
   if (chat.provider === 'openai') {
     return runOpenAICompletionStreaming(chat, onChunk)
+  }
+
+  if (chat.provider === 'google') {
+    return runGeminiCompletionStreaming(chat, onChunk)
+  }
+
+  if (chat.provider === 'anthropic') {
+    return runAnthropicCompletionStreaming(chat, onChunk)
   }
 
   throw new Error('No provider handler found')
@@ -215,6 +236,444 @@ async function runOpenAICompletionStreaming(
   })
 
   return { message }
+}
+
+function mapMessagesForGemini(messages: MessageRecord[]) {
+  return messages.map((message) => ({
+    role: message.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: message.content }],
+  }))
+}
+
+async function runGeminiCompletion(chat: ChatRecord): Promise<CompletionResult> {
+  const keyRecord = getApiKey('google')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing Google API key')
+  }
+
+  const messages = listMessagesForChat(chat.id)
+  if (messages.length === 0) {
+    throw new Error('Conversation is empty')
+  }
+
+  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_GEMINI_MODEL
+
+  const payload = {
+    contents: mapMessagesForGemini(messages),
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 8192,
+    },
+  }
+
+  const url = `${GEMINI_API_BASE}/models/${modelId}:generateContent?key=${keyRecord.secret}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`Gemini error: ${errorMessage}`)
+  }
+
+  const data = await response.json()
+  const completion = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+
+  if (!completion) {
+    throw new Error('Gemini returned an empty response')
+  }
+
+  const message = insertMessage({
+    chatId: chat.id,
+    role: 'assistant',
+    content: completion,
+    metadata: {
+      provider: 'google',
+      model: modelId,
+    },
+    tokenUsage: data?.usageMetadata?.totalTokenCount || 0,
+  })
+
+  return { message }
+}
+
+async function runGeminiCompletionStreaming(
+  chat: ChatRecord,
+  onChunk: StreamCallback
+): Promise<CompletionResult> {
+  const keyRecord = getApiKey('google')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing Google API key')
+  }
+
+  const messages = listMessagesForChat(chat.id)
+  if (messages.length === 0) {
+    throw new Error('Conversation is empty')
+  }
+
+  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_GEMINI_MODEL
+
+  const payload = {
+    contents: mapMessagesForGemini(messages),
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 8192,
+    },
+  }
+
+  const url = `${GEMINI_API_BASE}/models/${modelId}:streamGenerateContent?alt=sse&key=${keyRecord.secret}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`Gemini error: ${errorMessage}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+
+  const decoder = new TextDecoder()
+  let fullContent = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        try {
+          const parsed = JSON.parse(data)
+          const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+          if (content) {
+            fullContent += content
+            onChunk(content, false)
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+      }
+    }
+  }
+
+  onChunk('', true)
+
+  const message = insertMessage({
+    chatId: chat.id,
+    role: 'assistant',
+    content: fullContent.trim(),
+    metadata: {
+      provider: 'google',
+      model: modelId,
+    },
+    tokenUsage: 0,
+  })
+
+  return { message }
+}
+
+function mapMessagesForAnthropic(messages: MessageRecord[]) {
+  return messages
+    .filter((msg) => msg.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: message.content,
+    }))
+}
+
+function getSystemPromptFromMessages(messages: MessageRecord[]): string | undefined {
+  const systemMsg = messages.find((m) => m.role === 'system')
+  return systemMsg?.content
+}
+
+async function runAnthropicCompletion(chat: ChatRecord): Promise<CompletionResult> {
+  const keyRecord = getApiKey('anthropic')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing Anthropic API key')
+  }
+
+  const messages = listMessagesForChat(chat.id)
+  if (messages.length === 0) {
+    throw new Error('Conversation is empty')
+  }
+
+  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_ANTHROPIC_MODEL
+  const systemPrompt = getSystemPromptFromMessages(messages)
+
+  const payload: Record<string, unknown> = {
+    model: modelId,
+    messages: mapMessagesForAnthropic(messages),
+    max_tokens: 8192,
+    temperature: 0.4,
+  }
+
+  if (systemPrompt) {
+    payload.system = systemPrompt
+  }
+
+  const response = await fetch(`${ANTHROPIC_API_BASE}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': keyRecord.secret,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`Anthropic error: ${errorMessage}`)
+  }
+
+  const data = await response.json()
+  const completion = data?.content?.[0]?.text?.trim()
+
+  if (!completion) {
+    throw new Error('Anthropic returned an empty response')
+  }
+
+  const message = insertMessage({
+    chatId: chat.id,
+    role: 'assistant',
+    content: completion,
+    metadata: {
+      provider: 'anthropic',
+      model: modelId,
+    },
+    tokenUsage: (data?.usage?.input_tokens || 0) + (data?.usage?.output_tokens || 0),
+  })
+
+  return { message }
+}
+
+async function runAnthropicCompletionStreaming(
+  chat: ChatRecord,
+  onChunk: StreamCallback
+): Promise<CompletionResult> {
+  const keyRecord = getApiKey('anthropic')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing Anthropic API key')
+  }
+
+  const messages = listMessagesForChat(chat.id)
+  if (messages.length === 0) {
+    throw new Error('Conversation is empty')
+  }
+
+  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_ANTHROPIC_MODEL
+  const systemPrompt = getSystemPromptFromMessages(messages)
+
+  const payload: Record<string, unknown> = {
+    model: modelId,
+    messages: mapMessagesForAnthropic(messages),
+    max_tokens: 8192,
+    temperature: 0.4,
+    stream: true,
+  }
+
+  if (systemPrompt) {
+    payload.system = systemPrompt
+  }
+
+  const response = await fetch(`${ANTHROPIC_API_BASE}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': keyRecord.secret,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`Anthropic error: ${errorMessage}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+
+  const decoder = new TextDecoder()
+  let fullContent = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+            const content = parsed.delta.text
+            fullContent += content
+            onChunk(content, false)
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+      }
+    }
+  }
+
+  onChunk('', true)
+
+  const message = insertMessage({
+    chatId: chat.id,
+    role: 'assistant',
+    content: fullContent.trim(),
+    metadata: {
+      provider: 'anthropic',
+      model: modelId,
+    },
+    tokenUsage: 0,
+  })
+
+  return { message }
+}
+
+export type GeminiCompletionOptions = {
+  model?: string
+  temperature?: number
+  maxOutputTokens?: number
+  systemInstruction?: string
+}
+
+export async function runGeminiPrompt(
+  prompt: string,
+  options: GeminiCompletionOptions = {}
+): Promise<{ content: string; tokenCount: number }> {
+  const keyRecord = getApiKey('google')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing Google API key')
+  }
+
+  const model = options.model || DEFAULT_GEMINI_MODEL
+  const payload: Record<string, unknown> = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: options.temperature ?? 0.2,
+      maxOutputTokens: options.maxOutputTokens ?? 8192,
+    },
+  }
+
+  if (options.systemInstruction) {
+    payload.systemInstruction = { parts: [{ text: options.systemInstruction }] }
+  }
+
+  const url = `${GEMINI_API_BASE}/models/${model}:generateContent?key=${keyRecord.secret}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`Gemini error: ${errorMessage}`)
+  }
+
+  const data = await response.json()
+  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+  const tokenCount = data?.usageMetadata?.totalTokenCount || 0
+
+  return { content, tokenCount }
+}
+
+export async function runGeminiPromptStreaming(
+  prompt: string,
+  onChunk: StreamCallback,
+  options: GeminiCompletionOptions = {}
+): Promise<{ content: string; tokenCount: number }> {
+  const keyRecord = getApiKey('google')
+  if (!keyRecord?.secret) {
+    throw new Error('Missing Google API key')
+  }
+
+  const model = options.model || DEFAULT_GEMINI_MODEL
+  const payload: Record<string, unknown> = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: options.temperature ?? 0.2,
+      maxOutputTokens: options.maxOutputTokens ?? 8192,
+    },
+  }
+
+  if (options.systemInstruction) {
+    payload.systemInstruction = { parts: [{ text: options.systemInstruction }] }
+  }
+
+  const url = `${GEMINI_API_BASE}/models/${model}:streamGenerateContent?alt=sse&key=${keyRecord.secret}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await safeJson(response)
+    const errorMessage = errorBody?.error?.message || response.statusText
+    throw new Error(`Gemini error: ${errorMessage}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+
+  const decoder = new TextDecoder()
+  let fullContent = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        try {
+          const parsed = JSON.parse(data)
+          const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+          if (content) {
+            fullContent += content
+            onChunk(content, false)
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+      }
+    }
+  }
+
+  onChunk('', true)
+
+  return { content: fullContent.trim(), tokenCount: 0 }
 }
 
 async function safeJson(response: Response): Promise<any | null> {

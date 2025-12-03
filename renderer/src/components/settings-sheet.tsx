@@ -31,7 +31,7 @@ const PROVIDERS = [
     placeholder: "AIz...",
   },
   {
-    id: "claude",
+    id: "anthropic",
     name: "Anthropic Claude",
     description: "Claude 3.5 Sonnet, Haiku, and future releases.",
     placeholder: "sk-ant-...",

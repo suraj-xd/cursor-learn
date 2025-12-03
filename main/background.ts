@@ -22,6 +22,15 @@ import {
 } from './services/agent-storage'
 import { generateAssistantMessage, generateAssistantMessageStreaming, generateChatTitle, prepareChatContext } from './services/agent-runtime'
 import {
+  startCompactSession,
+  cancelCompactSession,
+  getCompactedChatForConversation,
+  getSessionStatus,
+  getActiveSession,
+  generateSuggestedQuestions,
+  type ConversationInput,
+} from './services/compact-agent'
+import {
   listWorkspaces,
   getWorkspaceDetails,
   getWorkspaceTabs,
@@ -282,3 +291,71 @@ ipcMain.handle('pdf:generate', async (_event, payload: { markdown: string; title
   const buffer = await generatePdf(payload.markdown, payload.title)
   return buffer
 })
+
+ipcMain.handle(
+  'compact:start',
+  async (
+    event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+    }
+  ) => {
+    const webContents = event.sender
+    const conversation: ConversationInput = {
+      workspaceId: payload.workspaceId,
+      conversationId: payload.conversationId,
+      title: payload.title,
+      bubbles: payload.bubbles,
+    }
+
+    const result = await startCompactSession(conversation, (session) => {
+      webContents.send('compact:progress', {
+        sessionId: session.id,
+        workspaceId: payload.workspaceId,
+        conversationId: payload.conversationId,
+        status: session.status,
+        progress: session.progress,
+        currentStep: session.currentStep,
+        chunksTotal: session.chunksTotal,
+        chunksProcessed: session.chunksProcessed,
+      })
+    })
+
+    return {
+      session: result.session,
+      compactedChat: result.compactedChat,
+    }
+  }
+)
+
+ipcMain.handle('compact:cancel', async (_event, sessionId: string) => {
+  return await cancelCompactSession(sessionId)
+})
+
+ipcMain.handle(
+  'compact:get',
+  async (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getCompactedChatForConversation(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle('compact:session:status', async (_event, sessionId: string) => {
+  return getSessionStatus(sessionId)
+})
+
+ipcMain.handle(
+  'compact:session:active',
+  async (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getActiveSession(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle(
+  'compact:suggestions',
+  async (_event, compactedContent: string) => {
+    return await generateSuggestedQuestions(compactedContent)
+  }
+)

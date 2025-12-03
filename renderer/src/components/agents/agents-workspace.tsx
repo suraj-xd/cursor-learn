@@ -41,6 +41,7 @@ import { MentionPopover, type WorkspaceLog } from "./mention-popover";
 import {
   getDefaultModelForProvider,
   getMaxTokensForModel,
+  PROVIDER_PRIORITY,
 } from "@/lib/agents/models";
 import { workspaceService } from "@/services/workspace";
 import { CompactContext } from "./context";
@@ -85,8 +86,6 @@ type DebugLog = {
   message: string;
   timestamp: number;
 };
-
-const REQUIRED_PROVIDER: ProviderId = "openai";
 
 export function AgentsWorkspace() {
   const [chats, setChats] = useState<AgentChat[]>([]);
@@ -158,7 +157,16 @@ export function AgentsWorkspace() {
   }, [pushDebug]);
 
   const hasProviderKey = useMemo(() => {
-    return apiKeys.some((key) => key.provider === REQUIRED_PROVIDER);
+    return apiKeys.some((key) => PROVIDER_PRIORITY.includes(key.provider));
+  }, [apiKeys]);
+
+  const preferredProvider = useMemo((): ProviderId | null => {
+    for (const provider of PROVIDER_PRIORITY) {
+      if (apiKeys.some((key) => key.provider === provider)) {
+        return provider;
+      }
+    }
+    return null;
   }, [apiKeys]);
 
   const ensureApiKey = useCallback(
@@ -315,18 +323,22 @@ export function AgentsWorkspace() {
   }, [search, chats]);
 
   const handleCreateChat = async () => {
-    if (isCreatingChat || !ensureApiKey(REQUIRED_PROVIDER)) {
+    if (isCreatingChat || !preferredProvider) {
+      if (!preferredProvider) {
+        setShowApiKeyDialog(true);
+        toast.error("Add an API key in Settings to use agents");
+      }
       return;
     }
 
     setIsCreatingChat(true);
     setAssistantError(null);
     try {
-      const defaultModel = getDefaultModelForProvider(REQUIRED_PROVIDER);
+      const defaultModel = getDefaultModelForProvider(preferredProvider);
       const newChat = await agentsIpc.chats.create({
         title: "Untitled chat",
-        modelId: `${REQUIRED_PROVIDER}:${defaultModel}`,
-        provider: REQUIRED_PROVIDER,
+        modelId: `${preferredProvider}:${defaultModel}`,
+        provider: preferredProvider,
       });
 
       setChats((prev) => [newChat, ...prev]);
@@ -969,7 +981,7 @@ export function AgentsWorkspace() {
       <ApiKeyDialog
         open={showApiKeyDialog}
         onOpenChange={setShowApiKeyDialog}
-        provider="OpenAI"
+        provider="an AI provider (Google, Anthropic, or OpenAI)"
         feature="agents"
       />
     </div>

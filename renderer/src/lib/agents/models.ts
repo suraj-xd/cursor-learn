@@ -197,21 +197,23 @@ const openRouterModels: ModelOption[] = [
 export const providerModelMap: Record<ProviderId, ModelOption[]> = {
   openai: openAIModels,
   google: googleModels,
-  claude: claudeModels,
+  anthropic: claudeModels,
   openrouter: openRouterModels,
 }
 
 export const providerInfo: Record<ProviderId, { name: string; supported: boolean }> = {
+  google: { name: 'Google', supported: true },
+  anthropic: { name: 'Anthropic', supported: true },
   openai: { name: 'OpenAI', supported: true },
-  google: { name: 'Google', supported: false },
-  claude: { name: 'Anthropic', supported: false },
   openrouter: { name: 'OpenRouter', supported: false },
 }
+
+export const PROVIDER_PRIORITY: ProviderId[] = ['google', 'anthropic', 'openai']
 
 const defaultModelMap: Record<ProviderId, string> = {
   openai: 'gpt-4o',
   google: 'gemini-2.0-flash',
-  claude: 'claude-sonnet-4-20250514',
+  anthropic: 'claude-sonnet-4-20250514',
   openrouter: 'openrouter/auto',
 }
 
