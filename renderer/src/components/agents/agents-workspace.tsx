@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertTriangle,
@@ -19,14 +20,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ApiKeyDialog } from "@/components/comman/api-key-dialog";
 import { agentsIpc } from "@/lib/agents/ipc";
+import { compactIpc, type CompactedChat, type CompactProgress } from "@/lib/agents/compact-ipc";
+import { APP_CONFIG } from "@/lib/config";
 import type {
   AgentApiKeyMetadata,
   AgentChat,
   AgentChatBundle,
   AgentChatContext,
   AgentMessage,
-  ProviderId,
 } from "@/types/agents";
+import type { ProviderId } from "@/lib/ai/config";
 import { toast } from "@/components/ui/toaster";
 import { useMessages } from "@/hooks/use-messages";
 import {
@@ -35,18 +38,19 @@ import {
 } from "@/components/elements/conversation";
 import { AgentResponse } from "./agent-response";
 import { ScrollArea } from "../ui/scroll-area";
-import { ModelSelector } from "./model-selector";
 import { ChatMenu } from "./chat-menu";
 import { MentionPopover, type WorkspaceLog } from "./mention-popover";
 import {
-  getDefaultModelForProvider,
-  getMaxTokensForModel,
+  getDefaultModel,
+  getMaxTokens,
   PROVIDER_PRIORITY,
-} from "@/lib/agents/models";
+} from "@/lib/ai/config";
 import { workspaceService } from "@/services/workspace";
 import { CompactContext } from "./context";
 import { ShiningText } from "@/components/comman/shinning-text";
 import VerticalCutReveal from "../xd-ui/vertical-cut-reveal";
+import { AssistantModelPicker, getInitialModel } from "@/components/workspace/assistant-model-picker";
+import { UsageIndicator } from "./usage-indicator";
 
 type MentionedConversation = {
   id: string;
@@ -55,7 +59,9 @@ type MentionedConversation = {
   content: string;
   type: "chat" | "composer";
   wasSummarized: boolean;
+  wasCompacted: boolean;
   messageCount?: number;
+  compactingStatus?: "pending" | "compacting" | "ready" | "failed";
 };
 
 type AttachedContext = {
@@ -88,8 +94,11 @@ type DebugLog = {
 };
 
 export function AgentsWorkspace() {
+  const searchParams = useSearchParams();
+  const initialChatId = searchParams.get("chat");
+
   const [chats, setChats] = useState<AgentChat[]>([]);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
   const [bundle, setBundle] = useState<AgentChatBundle | null>(null);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -112,6 +121,11 @@ export function AgentsWorkspace() {
   );
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>("");
+  const [availableProviders, setAvailableProviders] = useState<ProviderId[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderId>("google");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
+  const [mentionCompactProgress, setMentionCompactProgress] = useState<Record<string, CompactProgress | null>>({});
+  const [usageRefreshTrigger, setUsageRefreshTrigger] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const pushDebug = useCallback((level: DebugLog["level"], message: string) => {
@@ -147,6 +161,20 @@ export function AgentsWorkspace() {
       const keys = await agentsIpc.apiKeys.list();
       setApiKeys(keys);
       pushDebug("info", `Loaded ${keys.length} API key(s)`);
+
+      const providers = keys
+        .map((k) => k.provider as ProviderId)
+        .filter((p) => PROVIDER_PRIORITY.includes(p));
+      const sortedProviders = Array.from(new Set(providers)).sort(
+        (a, b) => PROVIDER_PRIORITY.indexOf(a) - PROVIDER_PRIORITY.indexOf(b)
+      );
+      setAvailableProviders(sortedProviders);
+
+      if (sortedProviders.length > 0) {
+        const initial = getInitialModel(sortedProviders);
+        setSelectedProvider(initial.provider);
+        setSelectedModel(initial.model);
+      }
     } catch (err) {
       pushDebug(
         "error",
@@ -157,7 +185,7 @@ export function AgentsWorkspace() {
   }, [pushDebug]);
 
   const hasProviderKey = useMemo(() => {
-    return apiKeys.some((key) => PROVIDER_PRIORITY.includes(key.provider));
+    return apiKeys.some((key) => PROVIDER_PRIORITY.includes(key.provider as ProviderId));
   }, [apiKeys]);
 
   const preferredProvider = useMemo((): ProviderId | null => {
@@ -242,6 +270,13 @@ export function AgentsWorkspace() {
   }, [fetchChats, loadApiKeys]);
 
   useEffect(() => {
+    const chatFromUrl = searchParams.get("chat");
+    if (chatFromUrl && chatFromUrl !== selectedChatId) {
+      setSelectedChatId(chatFromUrl);
+    }
+  }, [searchParams, selectedChatId]);
+
+  useEffect(() => {
     if (!selectedChatId) {
       setBundle(null);
       return;
@@ -323,8 +358,8 @@ export function AgentsWorkspace() {
   }, [search, chats]);
 
   const handleCreateChat = async () => {
-    if (isCreatingChat || !preferredProvider) {
-      if (!preferredProvider) {
+    if (isCreatingChat || availableProviders.length === 0) {
+      if (availableProviders.length === 0) {
         setShowApiKeyDialog(true);
         toast.error("Add an API key in Settings to use agents");
       }
@@ -334,11 +369,10 @@ export function AgentsWorkspace() {
     setIsCreatingChat(true);
     setAssistantError(null);
     try {
-      const defaultModel = getDefaultModelForProvider(preferredProvider);
       const newChat = await agentsIpc.chats.create({
         title: "Untitled chat",
-        modelId: `${preferredProvider}:${defaultModel}`,
-        provider: preferredProvider,
+        modelId: `${selectedProvider}:${selectedModel}`,
+        provider: selectedProvider,
       });
 
       setChats((prev) => [newChat, ...prev]);
@@ -354,6 +388,11 @@ export function AgentsWorkspace() {
       setIsCreatingChat(false);
     }
   };
+
+  const handleModelSelect = useCallback((provider: ProviderId, modelId: string) => {
+    setSelectedProvider(provider);
+    setSelectedModel(modelId);
+  }, []);
 
   const handleModelChange = useCallback(
     async (modelId: string, newProvider?: ProviderId) => {
@@ -409,12 +448,22 @@ export function AgentsWorkspace() {
   const currentModelId = useMemo(() => {
     if (!bundle?.chat?.modelId) {
       return bundle?.chat?.provider
-        ? getDefaultModelForProvider(bundle.chat.provider as ProviderId)
+        ? getDefaultModel(bundle.chat.provider as ProviderId, "chat")
         : null;
     }
     const parts = bundle.chat.modelId.split(":");
     return parts.length > 1 ? parts[1] : parts[0];
   }, [bundle?.chat?.modelId, bundle?.chat?.provider]);
+
+  const fullModelId = useMemo(
+    () => `${selectedProvider}:${selectedModel}`,
+    [selectedProvider, selectedModel]
+  );
+
+  const anyMentionCompacting = useMemo(
+    () => composer.mentionedConversations.some((m) => m.compactingStatus === "compacting"),
+    [composer.mentionedConversations]
+  );
 
   const requestAssistantCompletion = useCallback(
     async (chatId: string) => {
@@ -457,6 +506,7 @@ export function AgentsWorkspace() {
         unsubscribe();
         setAssistantBusy(false);
         setStreamingContent("");
+        setUsageRefreshTrigger((prev) => prev + 1);
         fetchChats();
       }
     },
@@ -501,21 +551,6 @@ export function AgentsWorkspace() {
           throw new Error("Conversation not found");
         }
 
-        const formattedContent = conversation.messages
-          .map((m) => `[${m.role.toUpperCase()}]: ${m.text}`)
-          .join("\n\n");
-
-        const wasSummarized =
-          conversation.totalTokenEstimate > MAX_CONTEXT_TOKENS;
-        let content = formattedContent;
-
-        if (wasSummarized) {
-          content =
-            `[Conversation: "${conversation.title}" - ${conversation.messages.length} messages]\n\n` +
-            formattedContent.slice(0, MAX_CONTEXT_TOKENS * 3) +
-            "\n\n[...conversation truncated for context length]";
-        }
-
         setComposer((prev) => {
           const valueWithoutMention = prev.value
             .replace(/@[^\n]*$/, "")
@@ -529,24 +564,97 @@ export function AgentsWorkspace() {
                 id: log.id,
                 workspaceId: log.workspaceId,
                 title: conversation.title,
-                content,
+                content: "",
                 type: log.type,
-                wasSummarized,
+                wasSummarized: false,
+                wasCompacted: false,
                 messageCount: conversation.messages.length,
+                compactingStatus: "pending",
               },
             ],
           };
         });
-        pushDebug(
-          "info",
-          `Added "${conversation.title}"${
-            wasSummarized ? " (truncated)" : ""
-          } as context`
-        );
+
+        pushDebug("info", `Starting compaction for "${conversation.title}"`);
+
+        const existingCompacted = await compactIpc.get(log.workspaceId, log.id);
+        if (existingCompacted) {
+          setComposer((prev) => ({
+            ...prev,
+            mentionedConversations: prev.mentionedConversations.map((m) =>
+              m.id === log.id
+                ? {
+                    ...m,
+                    content: existingCompacted.compactedContent,
+                    wasCompacted: true,
+                    compactingStatus: "ready" as const,
+                  }
+                : m
+            ),
+          }));
+          pushDebug("info", `Using cached compact for "${conversation.title}"`);
+          setIsLoadingMention(false);
+          return;
+        }
+
+        setMentionCompactProgress((prev) => ({
+          ...prev,
+          [log.id]: { sessionId: "", workspaceId: log.workspaceId, conversationId: log.id, status: "pending", progress: 0, currentStep: "Starting...", chunksTotal: 0, chunksProcessed: 0 },
+        }));
+
+        setComposer((prev) => ({
+          ...prev,
+          mentionedConversations: prev.mentionedConversations.map((m) =>
+            m.id === log.id ? { ...m, compactingStatus: "compacting" as const } : m
+          ),
+        }));
+
+        const bubbles = conversation.messages.map((m) => ({
+          type: m.role as "user" | "ai",
+          text: m.text,
+          timestamp: m.timestamp,
+        }));
+
+        const result = await compactIpc.start({
+          workspaceId: log.workspaceId,
+          conversationId: log.id,
+          title: conversation.title,
+          bubbles,
+        });
+
+        setComposer((prev) => ({
+          ...prev,
+          mentionedConversations: prev.mentionedConversations.map((m) =>
+            m.id === log.id
+              ? {
+                  ...m,
+                  content: result.compactedChat.compactedContent,
+                  wasCompacted: true,
+                  compactingStatus: "ready" as const,
+                }
+              : m
+          ),
+        }));
+
+        setMentionCompactProgress((prev) => {
+          const next = { ...prev };
+          delete next[log.id];
+          return next;
+        });
+
+        pushDebug("info", `Compacted "${conversation.title}" successfully`);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unable to load conversation";
         pushDebug("error", message);
+
+        setComposer((prev) => ({
+          ...prev,
+          mentionedConversations: prev.mentionedConversations.map((m) =>
+            m.id === log.id ? { ...m, compactingStatus: "failed" as const } : m
+          ),
+        }));
+
         toast.error(message);
       } finally {
         setIsLoadingMention(false);
@@ -795,18 +903,20 @@ export function AgentsWorkspace() {
         <header className="flex items-center justify-between border-b border-border/40 px-4 py-2.5">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium truncate">{selectedChatTitle}</p>
-            {bundle?.chat.modelId && (
-              <p className="text-xs text-muted-foreground uppercase font-mono truncate">
-                {bundle.chat.modelId.split(":")[1] || bundle.chat.modelId}
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
-            {bundle?.chat.provider && currentModelId && (
-              <ModelSelector
-                provider={bundle.chat.provider as ProviderId}
-                selectedModelId={currentModelId}
-                onModelChange={handleModelChange}
+            {availableProviders.length > 0 && (
+              <AssistantModelPicker
+                availableProviders={availableProviders}
+                selectedProvider={bundle?.chat.provider as ProviderId || selectedProvider}
+                selectedModel={currentModelId || selectedModel}
+                onSelect={(provider, model) => {
+                  if (bundle?.chat) {
+                    handleModelChange(model, provider);
+                  } else {
+                    handleModelSelect(provider, model);
+                  }
+                }}
               />
             )}
             <Button
@@ -886,17 +996,27 @@ export function AgentsWorkspace() {
                       <Badge
                         key={m.id}
                         variant="secondary"
-                        className="gap-1 pr-1 text-xs"
+                        className={`gap-1 pr-1 text-xs ${
+                          m.compactingStatus === "compacting" ? "animate-pulse" : ""
+                        }`}
                       >
-                        <AtSign className="h-3 w-3" />
+                        {m.compactingStatus === "compacting" ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <AtSign className="h-3 w-3" />
+                        )}
                         <span className="max-w-24 truncate">{m.title}</span>
-                        {m.wasSummarized && (
-                          <span className="text-[10px] text-amber-500">•</span>
+                        {m.wasCompacted && (
+                          <span className="text-[10px] text-emerald-500">✓</span>
+                        )}
+                        {m.compactingStatus === "failed" && (
+                          <span className="text-[10px] text-destructive">!</span>
                         )}
                         <button
                           type="button"
                           onClick={() => handleRemoveMention(m.id)}
                           className="ml-0.5 rounded-full p-0.5 hover:bg-muted"
+                          disabled={m.compactingStatus === "compacting"}
                         >
                           <X className="h-2.5 w-2.5" />
                         </button>
@@ -922,12 +1042,12 @@ export function AgentsWorkspace() {
                     <textarea
                       ref={textareaRef}
                       className="min-h-[80px] w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder="Ask a question… (@ to reference)"
+                      placeholder={anyMentionCompacting ? "Compacting context..." : "Ask a question… (@ to reference)"}
                       value={composer.value}
                       onChange={handleTextareaChange}
                       onKeyDown={handleKeyDown}
                       disabled={
-                        composer.isSending || assistantBusy || isLoadingMention
+                        composer.isSending || assistantBusy || isLoadingMention || anyMentionCompacting
                       }
                     />
                     {isLoadingMention && (
@@ -943,7 +1063,8 @@ export function AgentsWorkspace() {
                       composer.isSending ||
                       !composer.value.trim() ||
                       assistantBusy ||
-                      isLoadingMention
+                      isLoadingMention ||
+                      anyMentionCompacting
                     }
                     className="h-[80px] w-10 shrink-0"
                   >
@@ -956,18 +1077,26 @@ export function AgentsWorkspace() {
                 </div>
 
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                  {assistantBusy ? (
-                    <span className="flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Thinking…
-                    </span>
-                  ) : (
-                    <span>⇧↵ newline</span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {anyMentionCompacting ? (
+                      <span className="flex items-center gap-1.5 text-primary">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Compacting context…
+                      </span>
+                    ) : assistantBusy ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Thinking…
+                      </span>
+                    ) : (
+                      <span>⇧↵ newline</span>
+                    )}
+                    <UsageIndicator refreshTrigger={usageRefreshTrigger} />
+                  </div>
                   {contextPreview && bundle?.chat.modelId && (
                     <CompactContext
                       usedTokens={contextPreview.tokenEstimate}
-                      maxTokens={getMaxTokensForModel(bundle.chat.modelId)}
+                      maxTokens={getMaxTokens(bundle.chat.modelId)}
                       modelId={bundle.chat.modelId}
                       messageCount={contextPreview.totalMessages}
                     />
@@ -1078,7 +1207,7 @@ function MessagesView({
                   }}
                   containerClassName="mt-1 text-xs text-center text-muted-foreground font-light"
                 >
-                  {`w // Cursor Learn`}
+                  {`w // ${APP_CONFIG.name}`}
                 </VerticalCutReveal>
               </div>
             </div>

@@ -105,3 +105,72 @@ export const agentsIpc = {
   },
 }
 
+export type UsageFeature = 'chat' | 'title' | 'compact' | 'summarization'
+
+export type UsageStats = {
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  totalCost: number
+  totalCalls: number
+}
+
+export type UsageByProvider = {
+  provider: string
+  totalTokens: number
+  totalCalls: number
+  costEstimate: number
+}
+
+export type UsageByModel = {
+  provider: string
+  model: string
+  totalTokens: number
+  totalCalls: number
+  costEstimate: number
+}
+
+export type UsageByDay = {
+  date: string
+  totalTokens: number
+  totalCalls: number
+  costEstimate: number
+}
+
+export type UsageRecord = {
+  id: string
+  provider: string
+  model: string
+  feature: UsageFeature
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  costEstimate: number
+  chatId: string | null
+  metadata: unknown
+  createdAt: number
+}
+
+export const usageIpc = {
+  stats: async (since?: number): Promise<UsageStats> => {
+    const ipc = ensureIpc()
+    return ipc.usage.stats(since)
+  },
+  byProvider: async (since?: number): Promise<UsageByProvider[]> => {
+    const ipc = ensureIpc()
+    return ipc.usage.byProvider(since)
+  },
+  byModel: async (since?: number): Promise<UsageByModel[]> => {
+    const ipc = ensureIpc()
+    return ipc.usage.byModel(since)
+  },
+  byDay: async (since?: number): Promise<UsageByDay[]> => {
+    const ipc = ensureIpc()
+    return ipc.usage.byDay(since)
+  },
+  list: async (options?: { limit?: number; since?: number; provider?: string; feature?: UsageFeature }): Promise<UsageRecord[]> => {
+    const ipc = ensureIpc()
+    return ipc.usage.list(options)
+  },
+}
+

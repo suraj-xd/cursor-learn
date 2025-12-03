@@ -5,6 +5,7 @@ import { Check, Copy, Save } from "lucide-react"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/toaster"
+import { Button } from "../ui/button"
 
 interface AgentCodeBlockProps {
   code: string
@@ -102,20 +103,15 @@ interface CodeBlockActionProps {
 
 function CodeBlockAction({ icon: Icon, label, onClick, active }: CodeBlockActionProps) {
   return (
-    <button
+    <Button
       type="button"
+      size={"sm"}
       onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all",
-        "bg-background/80 backdrop-blur-sm border border-border/80 shadow-sm",
-        "hover:bg-accent hover:border-accent",
-        active && "text-emerald-500"
-      )}
       title={label}
     >
-      <Icon className="h-3 w-3" />
+      <Icon className="size-1" />
       <span className="hidden sm:inline">{label}</span>
-    </button>
+    </Button>
   )
 }
 

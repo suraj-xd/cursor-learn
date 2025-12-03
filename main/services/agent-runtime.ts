@@ -7,7 +7,15 @@ import {
   getContextSummary,
   upsertContextSummary,
   updateChatTitle,
+  recordUsage,
 } from './agent-storage'
+import {
+  PROVIDER_API_BASES,
+  DEFAULT_MODELS,
+  getDefaultModel,
+  isSupportedProvider,
+  type ProviderId,
+} from './ai-config'
 
 type CompletionResult = {
   message: MessageRecord
@@ -17,18 +25,11 @@ type TitleResult = {
   title: string
 }
 
-const TITLE_MODEL = 'gpt-4o-mini'
+const TITLE_MODEL = DEFAULT_MODELS.openai.title
+const SUMMARIZER_MODEL_ID = DEFAULT_MODELS.openai.summarization
 
-const SUPPORTED_PROVIDERS = ['openai', 'google', 'anthropic'] as const
-
-const isSupportedProvider = (provider: string): provider is (typeof SUPPORTED_PROVIDERS)[number] => {
-  return SUPPORTED_PROVIDERS.includes(provider as (typeof SUPPORTED_PROVIDERS)[number])
-}
-
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
-const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
-const ANTHROPIC_API_BASE = 'https://api.anthropic.com/v1'
-const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
+const GEMINI_API_BASE = PROVIDER_API_BASES.google
+const ANTHROPIC_API_BASE = PROVIDER_API_BASES.anthropic
 
 export async function generateAssistantMessage(chatId: string): Promise<CompletionResult> {
   const chat = getChatById(chatId)
@@ -73,7 +74,7 @@ async function runOpenAICompletion(chat: ChatRecord): Promise<CompletionResult> 
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || 'gpt-4o-mini'
+  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('openai', 'chat')
 
   const payload = {
     model: modelId,
@@ -103,6 +104,19 @@ async function runOpenAICompletion(chat: ChatRecord): Promise<CompletionResult> 
     throw new Error('OpenAI returned an empty response')
   }
 
+  const inputTokens = data?.usage?.prompt_tokens || 0
+  const outputTokens = data?.usage?.completion_tokens || 0
+  const totalTokens = data?.usage?.total_tokens || inputTokens + outputTokens
+
+  recordUsage({
+    provider: 'openai',
+    model: modelId,
+    feature: 'chat',
+    inputTokens,
+    outputTokens,
+    chatId: chat.id,
+  })
+
   const message = insertMessage({
     chatId: chat.id,
     role: 'assistant',
@@ -111,7 +125,7 @@ async function runOpenAICompletion(chat: ChatRecord): Promise<CompletionResult> 
       provider: 'openai',
       model: payload.model,
     },
-    tokenUsage: data?.usage?.total_tokens || 0,
+    tokenUsage: totalTokens,
   })
 
   return { message }
@@ -161,7 +175,7 @@ async function runOpenAICompletionStreaming(
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || 'gpt-4o-mini'
+  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('openai', 'chat')
 
   const payload = {
     model: modelId,
@@ -256,7 +270,7 @@ async function runGeminiCompletion(chat: ChatRecord): Promise<CompletionResult> 
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_GEMINI_MODEL
+  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('google', 'chat')
 
   const payload = {
     contents: mapMessagesForGemini(messages),
@@ -286,6 +300,19 @@ async function runGeminiCompletion(chat: ChatRecord): Promise<CompletionResult> 
     throw new Error('Gemini returned an empty response')
   }
 
+  const inputTokens = data?.usageMetadata?.promptTokenCount || 0
+  const outputTokens = data?.usageMetadata?.candidatesTokenCount || 0
+  const totalTokens = data?.usageMetadata?.totalTokenCount || inputTokens + outputTokens
+
+  recordUsage({
+    provider: 'google',
+    model: modelId,
+    feature: 'chat',
+    inputTokens,
+    outputTokens,
+    chatId: chat.id,
+  })
+
   const message = insertMessage({
     chatId: chat.id,
     role: 'assistant',
@@ -294,7 +321,7 @@ async function runGeminiCompletion(chat: ChatRecord): Promise<CompletionResult> 
       provider: 'google',
       model: modelId,
     },
-    tokenUsage: data?.usageMetadata?.totalTokenCount || 0,
+    tokenUsage: totalTokens,
   })
 
   return { message }
@@ -314,7 +341,7 @@ async function runGeminiCompletionStreaming(
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_GEMINI_MODEL
+  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('google', 'chat')
 
   const payload = {
     contents: mapMessagesForGemini(messages),
@@ -410,7 +437,7 @@ async function runAnthropicCompletion(chat: ChatRecord): Promise<CompletionResul
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_ANTHROPIC_MODEL
+  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('anthropic', 'chat')
   const systemPrompt = getSystemPromptFromMessages(messages)
 
   const payload: Record<string, unknown> = {
@@ -447,6 +474,18 @@ async function runAnthropicCompletion(chat: ChatRecord): Promise<CompletionResul
     throw new Error('Anthropic returned an empty response')
   }
 
+  const inputTokens = data?.usage?.input_tokens || 0
+  const outputTokens = data?.usage?.output_tokens || 0
+
+  recordUsage({
+    provider: 'anthropic',
+    model: modelId,
+    feature: 'chat',
+    inputTokens,
+    outputTokens,
+    chatId: chat.id,
+  })
+
   const message = insertMessage({
     chatId: chat.id,
     role: 'assistant',
@@ -455,7 +494,7 @@ async function runAnthropicCompletion(chat: ChatRecord): Promise<CompletionResul
       provider: 'anthropic',
       model: modelId,
     },
-    tokenUsage: (data?.usage?.input_tokens || 0) + (data?.usage?.output_tokens || 0),
+    tokenUsage: inputTokens + outputTokens,
   })
 
   return { message }
@@ -475,7 +514,7 @@ async function runAnthropicCompletionStreaming(
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || DEFAULT_ANTHROPIC_MODEL
+  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('anthropic', 'chat')
   const systemPrompt = getSystemPromptFromMessages(messages)
 
   const payload: Record<string, unknown> = {
@@ -570,7 +609,7 @@ export async function runGeminiPrompt(
     throw new Error('Missing Google API key')
   }
 
-  const model = options.model || DEFAULT_GEMINI_MODEL
+  const model = options.model || getDefaultModel('google', 'chat')
   const payload: Record<string, unknown> = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
@@ -613,7 +652,7 @@ export async function runGeminiPromptStreaming(
     throw new Error('Missing Google API key')
   }
 
-  const model = options.model || DEFAULT_GEMINI_MODEL
+  const model = options.model || getDefaultModel('google', 'chat')
   const payload: Record<string, unknown> = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
@@ -745,6 +784,15 @@ Message: "${userMessage.slice(0, 500)}"`
       title = extractTitleFromMessage(userMessage)
     }
 
+    recordUsage({
+      provider: 'openai',
+      model: TITLE_MODEL,
+      feature: 'title',
+      inputTokens: data?.usage?.prompt_tokens || 0,
+      outputTokens: data?.usage?.completion_tokens || 0,
+      chatId,
+    })
+
     updateChatTitle({ chatId, title })
     return { title }
   } catch {
@@ -778,7 +826,6 @@ function extractTitleFromMessage(message: string): string {
   return title || 'Untitled chat'
 }
 
-const SUMMARIZER_MODEL = 'gpt-4o-mini'
 const SUMMARY_MESSAGE_THRESHOLD = 20
 const SUMMARY_TOKEN_THRESHOLD = 100_000
 const RECENT_CONTEXT_MESSAGES = 8
@@ -972,7 +1019,7 @@ Provide a structured summary that includes:
 5. Any unresolved questions`
 
   const payload = {
-    model: SUMMARIZER_MODEL,
+    model: SUMMARIZER_MODEL_ID,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 2000,
@@ -998,6 +1045,14 @@ Provide a structured summary that includes:
     if (!summary) {
       return `[Summary unavailable - ${messages.length} messages about "${title}"]`
     }
+
+    recordUsage({
+      provider: 'openai',
+      model: SUMMARIZER_MODEL_ID,
+      feature: 'summarization',
+      inputTokens: data?.usage?.prompt_tokens || 0,
+      outputTokens: data?.usage?.completion_tokens || 0,
+    })
 
     return `[SUMMARIZED CHAT: "${title}"]\n${summary}`
   } catch {

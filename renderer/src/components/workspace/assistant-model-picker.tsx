@@ -15,19 +15,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  getModelsForProvider,
-  getDefaultModelForProvider,
-  providerInfo,
+  getProviderModels,
+  getDefaultModel,
+  getProvider,
+  PREFERRED_MODELS,
   type ModelOption,
-} from "@/lib/agents/models"
-import type { ProviderId } from "@/types/agents"
-
-const PREFERRED_MODELS: Record<ProviderId, string[]> = {
-  openai: ["gpt-4o-mini", "gpt-4o"],
-  google: ["gemini-2.0-flash", "gemini-2.5-flash-preview-05-20"],
-  anthropic: ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"],
-  openrouter: ["openrouter/auto"],
-}
+  type ProviderId,
+} from "@/lib/ai/config"
 
 interface AssistantModelPickerProps {
   availableProviders: ProviderId[]
@@ -47,7 +41,7 @@ export function AssistantModelPicker({
 
   const isSingleProvider = availableProviders.length === 1
 
-  const currentModels = useMemo(() => getModelsForProvider(selectedProvider), [selectedProvider])
+  const currentModels = useMemo(() => getProviderModels(selectedProvider), [selectedProvider])
 
   const selectedModelInfo = useMemo(
     () => currentModels.find((m) => m.id === selectedModel),
@@ -128,26 +122,26 @@ export function AssistantModelPicker({
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground">
           <span className="max-w-28 truncate">
-            {providerInfo[selectedProvider]?.name}: {selectedModelInfo?.label || selectedModel}
+            {getProvider(selectedProvider)?.name}: {selectedModelInfo?.label || selectedModel}
           </span>
           <ChevronDown className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         {availableProviders.map((provider) => {
-          const info = providerInfo[provider] || { name: provider }
-          const models = getModelsForProvider(provider)
+          const info = getProvider(provider) || { name: provider }
+          const models = getProviderModels(provider)
           const preferred = PREFERRED_MODELS[provider] || []
           const preferredList = models.filter((m) => preferred.includes(m.id))
           const otherList = models.filter((m) => !preferred.includes(m.id))
 
           return (
             <DropdownMenuSub key={provider}>
-              <DropdownMenuSubTrigger className="text-xs">
+              <DropdownMenuSubTrigger className={`text-xs ${provider === selectedProvider ? "text-primary" : "text-muted-foreground"}`}>
                 {info.name}
-                {provider === selectedProvider && (
+                {/* {provider === selectedProvider && (
                   <Check className="ml-auto h-3 w-3 text-primary" />
-                )}
+                )} */}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-60">
                 {preferredList.map((model) => (
@@ -212,7 +206,7 @@ export function getInitialModel(providers: ProviderId[]): { provider: ProviderId
     return { provider: "openai", model: "gpt-4o-mini" }
   }
   const provider = providers[0]
-  const model = getDefaultModelForProvider(provider)
+  const model = getDefaultModel(provider, "chat")
   return { provider, model }
 }
 

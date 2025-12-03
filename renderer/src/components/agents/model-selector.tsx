@@ -14,9 +14,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getModelsForProvider, providerInfo, isProviderSupported, type ModelOption } from "@/lib/agents/models"
+import { getProviderModels, getProvider, isProviderSupported, type ModelOption, type ProviderId } from "@/lib/ai/config"
 import { cn } from "@/lib/utils"
-import type { AgentApiKeyMetadata, ProviderId } from "@/types/agents"
+import type { AgentApiKeyMetadata } from "@/types/agents"
 import { agentsIpc } from "@/lib/agents/ipc"
 import { Badge } from "@/components/ui/badge"
 
@@ -40,13 +40,13 @@ export function ModelSelector({
     agentsIpc.apiKeys.list().then((keys: AgentApiKeyMetadata[]) => {
       const providers = keys.map((k) => k.provider as ProviderId)
       if (providers.length > 0) {
-        setAvailableProviders([...new Set([provider, ...providers])])
+        setAvailableProviders(Array.from(new Set([provider, ...providers])))
       }
     }).catch(() => {})
   }, [provider])
 
   const currentProviderModels = useMemo(
-    () => getModelsForProvider(provider),
+    () => getProviderModels(provider),
     [provider]
   )
 
@@ -55,7 +55,7 @@ export function ModelSelector({
     [currentProviderModels, selectedModelId]
   )
 
-  const currentProviderInfo = providerInfo[provider] || { name: provider, supported: false }
+  const currentProviderInfo = getProvider(provider) || { name: provider, supported: false }
 
   const handleModelSelect = (modelId: string, targetProvider?: ProviderId) => {
     setOpen(false)
@@ -111,8 +111,8 @@ export function ModelSelector({
             {availableProviders
               .filter((p) => p !== provider)
               .map((otherProvider) => {
-                const info = providerInfo[otherProvider] || { name: otherProvider, supported: false }
-                const models = getModelsForProvider(otherProvider)
+                const info = getProvider(otherProvider) || { name: otherProvider, supported: false }
+                const models = getProviderModels(otherProvider)
                 const supported = isProviderSupported(otherProvider)
                 
                 if (models.length === 0) return null

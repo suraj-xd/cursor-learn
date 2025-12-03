@@ -1,6 +1,7 @@
 import VerticalCutReveal from "@/components/xd-ui/vertical-cut-reveal";
 import { useUsername } from "@/hooks";
 import { useEffect, useMemo } from "react";
+import { APP_CONFIG } from "@/lib/config";
 
 const getTimeBasedEmoji = () => {
   const hour = new Date().getHours();
@@ -13,8 +14,9 @@ const getTimeBasedEmoji = () => {
 };
 
 export default function Preview() {
-  const { firstName, fetch } = useUsername();
+  const { fetch, getDisplayName } = useUsername();
   const weatherEmoji = useMemo(() => getTimeBasedEmoji(), []);
+  const displayName = getDisplayName();
 
   useEffect(() => {
     fetch();
@@ -32,7 +34,7 @@ export default function Preview() {
             damping: 21,
           }}
         >
-          {`HI 👋, ${firstName ? firstName : "FRIEND"}!`}
+          {`HI 👋, ${displayName ? displayName.toUpperCase() : "FRIEND"}!`}
         </VerticalCutReveal>
         <VerticalCutReveal
           splitBy="characters"
@@ -104,7 +106,7 @@ export default function Preview() {
           }}
           containerClassName="mt-1 text-xs text-center text-muted-foreground font-light"
         >
-          {`w // Cursor Learn`}
+          {`w // ${APP_CONFIG.name}`}
         </VerticalCutReveal>
       </div>
     </div>

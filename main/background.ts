@@ -19,6 +19,12 @@ import {
   getApiKey,
   updateChatModel,
   updateChatTitle,
+  getUsageStats,
+  getUsageByProvider,
+  getUsageByModel,
+  getUsageByDay,
+  listUsageRecords,
+  type UsageFeature,
 } from './services/agent-storage'
 import { generateAssistantMessage, generateAssistantMessageStreaming, generateChatTitle, prepareChatContext } from './services/agent-runtime'
 import {
@@ -357,5 +363,31 @@ ipcMain.handle(
   'compact:suggestions',
   async (_event, compactedContent: string) => {
     return await generateSuggestedQuestions(compactedContent)
+  }
+)
+
+ipcMain.handle('usage:stats', async (_event, since?: number) => {
+  return getUsageStats(since)
+})
+
+ipcMain.handle('usage:by-provider', async (_event, since?: number) => {
+  return getUsageByProvider(since)
+})
+
+ipcMain.handle('usage:by-model', async (_event, since?: number) => {
+  return getUsageByModel(since)
+})
+
+ipcMain.handle('usage:by-day', async (_event, since?: number) => {
+  return getUsageByDay(since)
+})
+
+ipcMain.handle(
+  'usage:list',
+  async (
+    _event,
+    options?: { limit?: number; since?: number; provider?: string; feature?: UsageFeature }
+  ) => {
+    return listUsageRecords(options ?? {})
   }
 )

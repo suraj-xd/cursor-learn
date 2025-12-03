@@ -104,6 +104,30 @@ ON compacted_chats (workspace_id, conversation_id);
 
 CREATE INDEX IF NOT EXISTS idx_compact_sessions_status
 ON compact_sessions (status);
+
+CREATE TABLE IF NOT EXISTS usage_records (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0,
+  cost_estimate REAL DEFAULT 0,
+  chat_id TEXT,
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_records_created_at
+ON usage_records (created_at);
+
+CREATE INDEX IF NOT EXISTS idx_usage_records_provider
+ON usage_records (provider, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_usage_records_feature
+ON usage_records (feature, created_at);
 `
 
 export function initAgentDatabase(dbFileName = 'agents.db'): BetterSqliteDatabase {

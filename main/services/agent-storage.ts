@@ -877,3 +877,257 @@ export const deleteCompactSession = (id: string): void => {
   )
   stmt.run(id)
 }
+
+export type UsageFeature = 'chat' | 'title' | 'compact' | 'summarization'
+
+export type UsageRecord = {
+  id: string
+  provider: string
+  model: string
+  feature: UsageFeature
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  costEstimate: number
+  chatId: string | null
+  metadata: unknown
+  createdAt: number
+}
+
+export type UsageStats = {
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  totalCost: number
+  totalCalls: number
+}
+
+export type UsageByProvider = {
+  provider: string
+  totalTokens: number
+  totalCalls: number
+  costEstimate: number
+}
+
+export type UsageByModel = {
+  provider: string
+  model: string
+  totalTokens: number
+  totalCalls: number
+  costEstimate: number
+}
+
+export type UsageByDay = {
+  date: string
+  totalTokens: number
+  totalCalls: number
+  costEstimate: number
+}
+
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'gpt-4o': { input: 2.5, output: 10 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'gpt-4.1': { input: 2, output: 8 },
+  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+  'gpt-4-turbo': { input: 10, output: 30 },
+  'o1': { input: 15, output: 60 },
+  'o1-mini': { input: 3, output: 12 },
+  'gemini-2.0-flash': { input: 0.1, output: 0.4 },
+  'gemini-2.5-pro-preview-05-06': { input: 1.25, output: 10 },
+  'gemini-1.5-pro': { input: 1.25, output: 5 },
+  'claude-sonnet-4-20250514': { input: 3, output: 15 },
+  'claude-opus-4-20250514': { input: 15, output: 75 },
+  'claude-3-5-sonnet-20241022': { input: 3, output: 15 },
+  'claude-3-5-haiku-20241022': { input: 0.8, output: 4 },
+}
+
+function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = MODEL_PRICING[model]
+  if (!pricing) return 0
+  return (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000
+}
+
+export const recordUsage = ({
+  id = randomUUID(),
+  provider,
+  model,
+  feature,
+  inputTokens = 0,
+  outputTokens = 0,
+  chatId,
+  metadata,
+}: {
+  id?: string
+  provider: string
+  model: string
+  feature: UsageFeature
+  inputTokens?: number
+  outputTokens?: number
+  chatId?: string | null
+  metadata?: unknown
+}): UsageRecord => {
+  const now = TIMESTAMP()
+  const totalTokens = inputTokens + outputTokens
+  const costEstimate = calculateCost(model, inputTokens, outputTokens)
+
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO usage_records (id, provider, model, feature, input_tokens, output_tokens, total_tokens, cost_estimate, chat_id, metadata, created_at)
+       VALUES (@id, @provider, @model, @feature, @inputTokens, @outputTokens, @totalTokens, @costEstimate, @chatId, @metadata, @createdAt)`
+    )
+  )
+
+  stmt.run({
+    id,
+    provider,
+    model,
+    feature,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    costEstimate,
+    chatId: chatId ?? null,
+    metadata: serialize(metadata),
+    createdAt: now,
+  })
+
+  return {
+    id,
+    provider,
+    model,
+    feature,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    costEstimate,
+    chatId: chatId ?? null,
+    metadata: metadata ?? null,
+    createdAt: now,
+  }
+}
+
+export const getUsageStats = (since?: number): UsageStats => {
+  const db = getAgentDatabase()
+  const whereClause = since ? 'WHERE created_at >= @since' : ''
+  
+  const stmt = db.prepare(
+    `SELECT 
+       COALESCE(SUM(total_tokens), 0) as totalTokens,
+       COALESCE(SUM(input_tokens), 0) as inputTokens,
+       COALESCE(SUM(output_tokens), 0) as outputTokens,
+       COALESCE(SUM(cost_estimate), 0) as totalCost,
+       COUNT(*) as totalCalls
+     FROM usage_records
+     ${whereClause}`
+  )
+
+  const result = since ? stmt.get({ since }) : stmt.get()
+  return result as UsageStats
+}
+
+export const getUsageByProvider = (since?: number): UsageByProvider[] => {
+  const db = getAgentDatabase()
+  const whereClause = since ? 'WHERE created_at >= @since' : ''
+  
+  const stmt = db.prepare(
+    `SELECT 
+       provider,
+       COALESCE(SUM(total_tokens), 0) as totalTokens,
+       COUNT(*) as totalCalls,
+       COALESCE(SUM(cost_estimate), 0) as costEstimate
+     FROM usage_records
+     ${whereClause}
+     GROUP BY provider
+     ORDER BY totalTokens DESC`
+  )
+
+  return (since ? stmt.all({ since }) : stmt.all()) as UsageByProvider[]
+}
+
+export const getUsageByModel = (since?: number): UsageByModel[] => {
+  const db = getAgentDatabase()
+  const whereClause = since ? 'WHERE created_at >= @since' : ''
+  
+  const stmt = db.prepare(
+    `SELECT 
+       provider,
+       model,
+       COALESCE(SUM(total_tokens), 0) as totalTokens,
+       COUNT(*) as totalCalls,
+       COALESCE(SUM(cost_estimate), 0) as costEstimate
+     FROM usage_records
+     ${whereClause}
+     GROUP BY provider, model
+     ORDER BY totalTokens DESC`
+  )
+
+  return (since ? stmt.all({ since }) : stmt.all()) as UsageByModel[]
+}
+
+export const getUsageByDay = (since?: number): UsageByDay[] => {
+  const db = getAgentDatabase()
+  const whereClause = since ? 'WHERE created_at >= @since' : ''
+  
+  const stmt = db.prepare(
+    `SELECT 
+       date(created_at / 1000, 'unixepoch') as date,
+       COALESCE(SUM(total_tokens), 0) as totalTokens,
+       COUNT(*) as totalCalls,
+       COALESCE(SUM(cost_estimate), 0) as costEstimate
+     FROM usage_records
+     ${whereClause}
+     GROUP BY date(created_at / 1000, 'unixepoch')
+     ORDER BY date DESC
+     LIMIT 30`
+  )
+
+  return (since ? stmt.all({ since }) : stmt.all()) as UsageByDay[]
+}
+
+export const listUsageRecords = ({
+  limit = 50,
+  since,
+  provider,
+  feature,
+}: {
+  limit?: number
+  since?: number
+  provider?: string
+  feature?: UsageFeature
+} = {}): UsageRecord[] => {
+  const db = getAgentDatabase()
+  const conditions: string[] = []
+  const params: Record<string, unknown> = { limit }
+
+  if (since) {
+    conditions.push('created_at >= @since')
+    params.since = since
+  }
+  if (provider) {
+    conditions.push('provider = @provider')
+    params.provider = provider
+  }
+  if (feature) {
+    conditions.push('feature = @feature')
+    params.feature = feature
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const stmt = db.prepare(
+    `SELECT id, provider, model, feature,
+       input_tokens as inputTokens, output_tokens as outputTokens,
+       total_tokens as totalTokens, cost_estimate as costEstimate,
+       chat_id as chatId, metadata, created_at as createdAt
+     FROM usage_records
+     ${whereClause}
+     ORDER BY created_at DESC
+     LIMIT @limit`
+  )
+
+  const rows = stmt.all(params)
+  return rows.map((row: any) => ({
+    ...row,
+    metadata: deserialize(row.metadata),
+  }))
+}

@@ -14,6 +14,12 @@ import type {
   ChatMentionRecord,
   CompactedChatRecord,
   CompactSessionRecord,
+  UsageRecord,
+  UsageStats,
+  UsageByProvider,
+  UsageByModel,
+  UsageByDay,
+  UsageFeature,
 } from './services/agent-storage'
 import type { ChatContext } from './services/agent-runtime'
 
@@ -191,6 +197,18 @@ const api = {
       ipcRenderer.invoke('compact:suggestions', compactedContent) as Promise<
         Array<{ question: string; icon: string }>
       >,
+  },
+  usage: {
+    stats: (since?: number) =>
+      ipcRenderer.invoke('usage:stats', since) as Promise<UsageStats>,
+    byProvider: (since?: number) =>
+      ipcRenderer.invoke('usage:by-provider', since) as Promise<UsageByProvider[]>,
+    byModel: (since?: number) =>
+      ipcRenderer.invoke('usage:by-model', since) as Promise<UsageByModel[]>,
+    byDay: (since?: number) =>
+      ipcRenderer.invoke('usage:by-day', since) as Promise<UsageByDay[]>,
+    list: (options?: { limit?: number; since?: number; provider?: string; feature?: UsageFeature }) =>
+      ipcRenderer.invoke('usage:list', options) as Promise<UsageRecord[]>,
   },
 }
 

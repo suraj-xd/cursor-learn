@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Bot,
   Loader2,
@@ -11,6 +12,8 @@ import {
   Trash2,
   MessageSquare,
   Sparkles,
+  ArrowUpRightSquare,
+  MoreHorizontal,
 } from "lucide-react"
 import {
   Sidebar,
@@ -30,8 +33,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { agentsIpc } from "@/lib/agents/ipc"
 import { compactIpc, type CompactedChat, type CompactProgress, type SuggestedQuestion } from "@/lib/agents/compact-ipc"
+import { UsageIndicator } from "@/components/agents/usage-indicator"
 import type { ChatTab } from "@/types/workspace"
-import type { AgentChat, ProviderId } from "@/types/agents"
+import type { AgentChat } from "@/types/agents"
+import type { ProviderId } from "@/lib/ai/config"
 import { toast } from "@/components/ui/toaster"
 import { Message, MessageContent } from "@/components/elements/message"
 import { Response } from "@/components/elements/response"
@@ -40,7 +45,7 @@ import { ApiKeyDialog } from "@/components/comman/api-key-dialog"
 import { CompactContext } from "@/components/agents/context"
 import { AssistantSuggestedQuestions } from "./assistant-suggested-questions"
 import { AssistantModelPicker, getInitialModel } from "./assistant-model-picker"
-import { PROVIDER_PRIORITY, getMaxTokensForModel } from "@/lib/agents/models"
+import { PROVIDER_PRIORITY, getMaxTokens } from "@/lib/ai/config"
 
 interface AssistantSidebarProps {
   open: boolean
@@ -71,6 +76,7 @@ export function AssistantSidebar({
   currentConversation,
   workspaceId,
 }: AssistantSidebarProps) {
+  const router = useRouter()
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<AssistantMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -89,13 +95,15 @@ export function AssistantSidebar({
   const [availableProviders, setAvailableProviders] = useState<ProviderId[]>([])
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>("google")
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash")
+  const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
+  const [usageRefreshTrigger, setUsageRefreshTrigger] = useState(0)
 
   const compactingRef = useRef(false)
   const conversationIdRef = useRef<string | null>(null)
   const pendingSendRef = useRef<{ message: string; context?: string } | null>(null)
 
   const fullModelId = useMemo(() => `${selectedProvider}:${selectedModel}`, [selectedProvider, selectedModel])
-  const maxTokens = useMemo(() => getMaxTokensForModel(fullModelId), [fullModelId])
+  const maxTokens = useMemo(() => getMaxTokens(fullModelId), [fullModelId])
 
   const loadSuggestedQuestions = useCallback(async (content: string) => {
     try {
@@ -105,6 +113,19 @@ export function AssistantSidebar({
       console.error("Failed to load suggestions")
     }
   }, [])
+
+  const refreshSuggestions = useCallback(async () => {
+    if (!compactedChat?.compactedContent) return
+    setIsRefreshingSuggestions(true)
+    try {
+      const questions = await compactIpc.getSuggestions(compactedChat.compactedContent)
+      setSuggestedQuestions(questions)
+    } catch {
+      console.error("Failed to refresh suggestions")
+    } finally {
+      setIsRefreshingSuggestions(false)
+    }
+  }, [compactedChat?.compactedContent])
 
   const getSystemContext = useCallback(() => {
     if (compactedChat) {
@@ -133,10 +154,11 @@ export function AssistantSidebar({
         : null
 
       let currentChatId = chatId
+      const isFirstMessage = !currentChatId
 
       if (!currentChatId) {
         const chat = await agentsIpc.chats.create({
-          title: `Assistant: ${currentConversation?.title || "Quick Chat"}`,
+          title: "New chat",
           modelId: fullModelId,
           provider: selectedProvider,
           workspaceConversationId: conversationKey,
@@ -174,6 +196,18 @@ export function AssistantSidebar({
           content: assistantMessage.content,
         },
       ])
+      setUsageRefreshTrigger((prev) => prev + 1)
+
+      if (isFirstMessage && currentChatId) {
+        agentsIpc.chats
+          .generateTitle({ chatId: currentChatId, userMessage: messageContent })
+          .then(({ title }) => {
+            setChatHistory((prev) =>
+              prev.map((c) => (c.id === currentChatId ? { ...c, title } : c))
+            )
+          })
+          .catch(() => {})
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to get response")
     } finally {
@@ -473,6 +507,12 @@ export function AssistantSidebar({
     }
   }, [chatId, handleNewChat])
 
+  const handleOpenInAgents = useCallback((e: React.MouseEvent, chat: AgentChat) => {
+    e.stopPropagation()
+    onClose()
+    router.push(`/agents?chat=${chat.id}`)
+  }, [onClose, router])
+
   const visibleMessages = useMemo(
     () => messages.filter((m) => m.role !== "system"),
     [messages]
@@ -521,23 +561,45 @@ export function AssistantSidebar({
                       Recent Chats
                     </div>
                     {chatHistory.slice(0, 5).map((chat) => (
-                      <DropdownMenuItem
-                        key={chat.id}
-                        onClick={() => handleLoadChat(chat)}
-                        className="gap-2 cursor-pointer group"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                        <span className="flex-1 truncate text-xs">
-                          {chat.title.replace("Assistant: ", "")}
-                        </span>
+                      <div key={chat.id} className="flex items-center gap-1 px-2 py-1.5 hover:bg-accent rounded-sm">
                         <button
                           type="button"
-                          onClick={(e) => handleDeleteChat(e, chat)}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-destructive/20 rounded transition-opacity"
+                          onClick={() => handleLoadChat(chat)}
+                          className="flex items-center gap-2 flex-1 min-w-0"
                         >
-                          <Trash2 className="h-3 w-3 text-destructive" />
+                          <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="flex-1 truncate text-xs">
+                            {chat.title.replace("Assistant: ", "")}
+                          </span>
                         </button>
-                      </DropdownMenuItem>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 hover:bg-muted rounded opacity-60 hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-3 w-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              onClick={(e) => handleOpenInAgents(e as unknown as React.MouseEvent, chat)}
+                              className="gap-2 cursor-pointer text-xs"
+                            >
+                              <ArrowUpRightSquare className="h-3.5 w-3.5" />
+                              Open in Agents
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => handleDeleteChat(e as unknown as React.MouseEvent, chat)}
+                              className="gap-2 cursor-pointer text-xs text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     ))}
                   </>
                 )}
@@ -608,16 +670,18 @@ export function AssistantSidebar({
             </div>
           </div>
         ) : showSuggestions ? (
-          <div className="flex-1 flex flex-col p-4">
-            <div className="text-center mb-4">
+          <div className="flex-1 flex flex-col p-4 justify-end items-end">
+            {/* <div className="text-center mb-4">
               <Sparkles className="h-6 w-6 mx-auto mb-2 text-primary/50" />
               <p className="text-xs text-muted-foreground">
                 Ask about this conversation
               </p>
-            </div>
+            </div> */}
             <AssistantSuggestedQuestions
               questions={suggestedQuestions}
               onSelect={handleSelectSuggestion}
+              onRefresh={refreshSuggestions}
+              isRefreshing={isRefreshingSuggestions}
             />
           </div>
         ) : visibleMessages.length === 0 ? (
@@ -643,7 +707,7 @@ export function AssistantSidebar({
                     }
                   >
                     {msg.role === "assistant" ? (
-                      <Response>{msg.content}</Response>
+                      <Response className="text-sm">{msg.content}</Response>
                     ) : (
                       msg.content
                     )}
@@ -691,15 +755,20 @@ export function AssistantSidebar({
             )}
           </Button>
         </div>
-        {!hasApiKey && (
-          <button
-            type="button"
-            onClick={() => setShowApiKeyDialog(true)}
-            className="text-[10px] text-amber-500 text-center mt-1 hover:underline"
-          >
-            Add API key to get started →
-          </button>
-        )}
+        <div className="flex items-center justify-between mt-1">
+          {!hasApiKey ? (
+            <button
+              type="button"
+              onClick={() => setShowApiKeyDialog(true)}
+              className="text-[10px] text-amber-500 hover:underline"
+            >
+              Add API key to get started →
+            </button>
+          ) : (
+            <span />
+          )}
+          {hasApiKey && <UsageIndicator refreshTrigger={usageRefreshTrigger} />}
+        </div>
       </SidebarFooter>
 
       <ApiKeyDialog

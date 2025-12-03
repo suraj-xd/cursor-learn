@@ -1,7 +1,7 @@
 "use client"
 
 import { memo } from 'react'
-import { Code, Lightbulb, Puzzle, BookOpen, Rocket, Target } from 'lucide-react'
+import { Code, Lightbulb, Puzzle, BookOpen, Rocket, Target, RefreshCw, Loader2 } from 'lucide-react'
 import type { SuggestedQuestion } from '@/lib/agents/compact-ipc'
 
 const iconMap = {
@@ -16,11 +16,15 @@ const iconMap = {
 interface AssistantSuggestedQuestionsProps {
   questions: SuggestedQuestion[]
   onSelect: (question: string) => void
+  onRefresh?: () => Promise<void>
+  isRefreshing?: boolean
 }
 
 export const AssistantSuggestedQuestions = memo(function AssistantSuggestedQuestions({
   questions,
   onSelect,
+  onRefresh,
+  isRefreshing = false,
 }: AssistantSuggestedQuestionsProps) {
   if (questions.length === 0) return null
 
@@ -42,6 +46,21 @@ export const AssistantSuggestedQuestions = memo(function AssistantSuggestedQuest
           </button>
         )
       })}
+      {onRefresh && (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          {isRefreshing ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+          <span>{isRefreshing ? "Generating..." : "More suggestions"}</span>
+        </button>
+      )}
     </div>
   )
 })
