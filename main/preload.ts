@@ -22,6 +22,8 @@ import type {
   UsageFeature,
 } from './services/agent-storage'
 import type { ChatContext } from './services/agent-runtime'
+import type { NoteRecord } from './services/notes-storage'
+import type { SnippetRecord } from './services/snippets-storage'
 
 type SearchType = 'all' | 'chat' | 'composer'
 
@@ -209,6 +211,46 @@ const api = {
       ipcRenderer.invoke('usage:by-day', since) as Promise<UsageByDay[]>,
     list: (options?: { limit?: number; since?: number; provider?: string; feature?: UsageFeature }) =>
       ipcRenderer.invoke('usage:list', options) as Promise<UsageRecord[]>,
+  },
+  notes: {
+    list: (options?: { limit?: number; offset?: number; search?: string }) =>
+      ipcRenderer.invoke('notes:list', options) as Promise<NoteRecord[]>,
+    get: (id: string) =>
+      ipcRenderer.invoke('notes:get', id) as Promise<NoteRecord | null>,
+    create: (payload: { id?: string; title?: string | null; content: string; plainText: string; labels?: string[] }) =>
+      ipcRenderer.invoke('notes:create', payload) as Promise<NoteRecord>,
+    update: (payload: { id: string; title?: string | null; content?: string; plainText?: string; labels?: string[]; isPinned?: boolean }) =>
+      ipcRenderer.invoke('notes:update', payload) as Promise<NoteRecord | null>,
+    delete: (id: string) =>
+      ipcRenderer.invoke('notes:delete', id) as Promise<boolean>,
+    togglePin: (id: string) =>
+      ipcRenderer.invoke('notes:toggle-pin', id) as Promise<NoteRecord | null>,
+    count: () =>
+      ipcRenderer.invoke('notes:count') as Promise<number>,
+    labels: () =>
+      ipcRenderer.invoke('notes:labels') as Promise<string[]>,
+  },
+  snippets: {
+    list: (options?: { limit?: number; offset?: number; search?: string; language?: string }) =>
+      ipcRenderer.invoke('snippets:list', options) as Promise<SnippetRecord[]>,
+    get: (id: string) =>
+      ipcRenderer.invoke('snippets:get', id) as Promise<SnippetRecord | null>,
+    create: (payload: { id?: string; code: string; language: string; title?: string | null; labels?: string[]; sourceContext?: string | null }) =>
+      ipcRenderer.invoke('snippets:create', payload) as Promise<SnippetRecord>,
+    update: (payload: { id: string; code?: string; language?: string; title?: string | null; labels?: string[]; isPinned?: boolean }) =>
+      ipcRenderer.invoke('snippets:update', payload) as Promise<SnippetRecord | null>,
+    delete: (id: string) =>
+      ipcRenderer.invoke('snippets:delete', id) as Promise<boolean>,
+    togglePin: (id: string) =>
+      ipcRenderer.invoke('snippets:toggle-pin', id) as Promise<SnippetRecord | null>,
+    count: () =>
+      ipcRenderer.invoke('snippets:count') as Promise<number>,
+    languages: () =>
+      ipcRenderer.invoke('snippets:languages') as Promise<{ language: string; count: number }[]>,
+    labels: () =>
+      ipcRenderer.invoke('snippets:labels') as Promise<string[]>,
+    migrate: (snippets: Array<{ id: string; code: string; language: string; createdAt: string }>) =>
+      ipcRenderer.invoke('snippets:migrate', snippets) as Promise<number>,
   },
 }
 

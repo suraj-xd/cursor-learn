@@ -129,3 +129,7 @@ export const codeThemeOptions = Object.keys(codeThemeStyles).map((id) => ({
   preview: themeMeta[id as CodeThemeId].preview,
 }))
 
+export function getCodeThemeStyle(themeId: CodeThemeId): Record<string, React.CSSProperties> {
+  return codeThemeStyles[themeId] as Record<string, React.CSSProperties>
+}
+

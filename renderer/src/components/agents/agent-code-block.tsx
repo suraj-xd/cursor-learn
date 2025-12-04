@@ -37,23 +37,23 @@ export function AgentCodeBlock({
     }
   }
 
-  const handleSaveSnippet = () => {
-    if (onSaveSnippet) {
-      onSaveSnippet(code, language)
-    } else {
-      const snippets = JSON.parse(localStorage.getItem("agent-snippets") || "[]")
-      const snippet = {
-        id: crypto.randomUUID(),
-        code,
-        language,
-        createdAt: new Date().toISOString(),
+  const handleSaveSnippet = async () => {
+    try {
+      if (onSaveSnippet) {
+        onSaveSnippet(code, language)
+      } else {
+        await window.ipc.snippets.create({
+          code,
+          language,
+          sourceContext: "agent-chat",
+        })
+        toast.success("Saved to snippets")
       }
-      snippets.unshift(snippet)
-      localStorage.setItem("agent-snippets", JSON.stringify(snippets.slice(0, 100)))
-      toast.success("Saved to snippets")
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {
+      toast.error("Failed to save snippet")
     }
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
   }
 
   return (

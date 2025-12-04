@@ -2,11 +2,10 @@
 
 import { useCallback, type ReactNode } from "react"
 import { Popover } from "react-text-selection-popover"
-import { MessageSquarePlus, StickyNote, Copy, Check } from "lucide-react"
+import { MessageSquarePlus, StickyNote } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSelectionStore, type SelectionSource } from "@/store/selection"
 import { toast } from "@/components/ui/toaster"
-import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { DividerVerticalIcon } from "@radix-ui/react-icons"
 
@@ -15,7 +14,6 @@ interface TextSelectionToolbarProps {
   source: SelectionSource
   showAddToChat?: boolean
   showAddToNotes?: boolean
-  showCopy?: boolean
   onAddToChat?: (text: string) => void
   className?: string
 }
@@ -25,11 +23,9 @@ export function TextSelectionToolbar({
   source,
   showAddToChat = true,
   showAddToNotes = true,
-  showCopy = true,
   onAddToChat,
   className,
 }: TextSelectionToolbarProps) {
-  const [copied, setCopied] = useState(false)
   const addSelection = useSelectionStore((s) => s.addSelection)
 
   const handleAddToChat = useCallback(() => {
@@ -43,27 +39,25 @@ export function TextSelectionToolbar({
     onAddToChat?.(text)
   }, [addSelection, source, onAddToChat])
 
-  const handleAddToNotes = useCallback(() => {
+  const handleAddToNotes = useCallback(async () => {
     const selection = window.getSelection()
     const text = selection?.toString().trim()
     if (!text) return
     
     selection?.removeAllRanges()
-    toast.info("Notes feature coming soon")
-  }, [])
-
-  const handleCopy = useCallback(async () => {
-    const selection = window.getSelection()
-    const text = selection?.toString().trim()
-    if (!text) return
-
+    
     try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-      toast.success("Copied to clipboard")
+      const content = JSON.stringify({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      })
+      await window.ipc.notes.create({
+        content,
+        plainText: text,
+      })
+      toast.success("Added to notes")
     } catch {
-      toast.error("Failed to copy")
+      toast.error("Failed to add to notes")
     }
   }, [])
 
@@ -106,20 +100,6 @@ export function TextSelectionToolbar({
                   Add
                 </Button>
               )}
-              {/* {showCopy && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCopy}
-                  className="h-7 w-7 p-0"
-                >
-                  {copied ? (
-                    <Check className="h-3.5 w-3.5 text-green-500" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              )} */}
             </div>
           )
         }}

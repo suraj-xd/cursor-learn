@@ -128,6 +128,36 @@ ON usage_records (provider, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_usage_records_feature
 ON usage_records (feature, created_at);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  content TEXT NOT NULL,
+  plain_text TEXT NOT NULL,
+  labels TEXT,
+  is_pinned INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes(is_pinned DESC, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS snippets (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL,
+  language TEXT NOT NULL,
+  title TEXT,
+  labels TEXT,
+  source_context TEXT,
+  is_pinned INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
+CREATE INDEX IF NOT EXISTS idx_snippets_updated ON snippets(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_snippets_pinned ON snippets(is_pinned DESC, updated_at DESC);
 `
 
 export function initAgentDatabase(dbFileName = 'agents.db'): BetterSqliteDatabase {

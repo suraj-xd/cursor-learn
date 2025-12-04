@@ -55,6 +55,28 @@ import {
   getWorkspacePathConfig,
 } from './services/config-service'
 import { generatePdf } from './services/pdf-service'
+import {
+  listNotes,
+  getNote,
+  createNote,
+  updateNote,
+  deleteNote,
+  toggleNotePin,
+  getNotesCount,
+  getAllLabels as getAllNoteLabels,
+} from './services/notes-storage'
+import {
+  listSnippets,
+  getSnippet,
+  createSnippet,
+  updateSnippet,
+  deleteSnippet,
+  toggleSnippetPin,
+  getSnippetsCount,
+  getLanguages,
+  getAllSnippetLabels,
+  migrateFromLocalStorage,
+} from './services/snippets-storage'
 
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -391,3 +413,77 @@ ipcMain.handle(
     return listUsageRecords(options ?? {})
   }
 )
+
+ipcMain.handle('notes:list', (_event, options?: { limit?: number; offset?: number; search?: string }) => {
+  return listNotes(options)
+})
+
+ipcMain.handle('notes:get', (_event, id: string) => {
+  return getNote(id)
+})
+
+ipcMain.handle('notes:create', (_event, payload: { id?: string; title?: string | null; content: string; plainText: string; labels?: string[] }) => {
+  return createNote(payload)
+})
+
+ipcMain.handle('notes:update', (_event, payload: { id: string; title?: string | null; content?: string; plainText?: string; labels?: string[]; isPinned?: boolean }) => {
+  const { id, ...rest } = payload
+  return updateNote(id, rest)
+})
+
+ipcMain.handle('notes:delete', (_event, id: string) => {
+  return deleteNote(id)
+})
+
+ipcMain.handle('notes:toggle-pin', (_event, id: string) => {
+  return toggleNotePin(id)
+})
+
+ipcMain.handle('notes:count', () => {
+  return getNotesCount()
+})
+
+ipcMain.handle('notes:labels', () => {
+  return getAllNoteLabels()
+})
+
+ipcMain.handle('snippets:list', (_event, options?: { limit?: number; offset?: number; search?: string; language?: string }) => {
+  return listSnippets(options)
+})
+
+ipcMain.handle('snippets:get', (_event, id: string) => {
+  return getSnippet(id)
+})
+
+ipcMain.handle('snippets:create', (_event, payload: { id?: string; code: string; language: string; title?: string | null; labels?: string[]; sourceContext?: string | null }) => {
+  return createSnippet(payload)
+})
+
+ipcMain.handle('snippets:update', (_event, payload: { id: string; code?: string; language?: string; title?: string | null; labels?: string[]; isPinned?: boolean }) => {
+  const { id, ...rest } = payload
+  return updateSnippet(id, rest)
+})
+
+ipcMain.handle('snippets:delete', (_event, id: string) => {
+  return deleteSnippet(id)
+})
+
+ipcMain.handle('snippets:toggle-pin', (_event, id: string) => {
+  return toggleSnippetPin(id)
+})
+
+ipcMain.handle('snippets:count', () => {
+  return getSnippetsCount()
+})
+
+ipcMain.handle('snippets:languages', () => {
+  return getLanguages()
+})
+
+ipcMain.handle('snippets:labels', () => {
+  return getAllSnippetLabels()
+})
+
+ipcMain.handle('snippets:migrate', (_event, snippets: Array<{ id: string; code: string; language: string; createdAt: string }>) => {
+  return migrateFromLocalStorage(snippets)
+})
