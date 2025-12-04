@@ -95,13 +95,16 @@ function CodeEditor({ value, onChange, language, placeholder }: CodeEditorProps)
 
 interface NewSnippetEditorProps {
   onClose: () => void
+  onSaveAndOpen?: (id: string) => void
+  initialCode?: string
+  initialLanguage?: string
 }
 
-export function NewSnippetEditor({ onClose }: NewSnippetEditorProps) {
-  const { createSnippet, labels: allLabels, fetchLabels } = useSnippetsStore()
+export function NewSnippetEditor({ onClose, onSaveAndOpen, initialCode = "", initialLanguage = "javascript" }: NewSnippetEditorProps) {
+  const { createSnippet, labels: allLabels, fetchLabels, setSelectedSnippetId } = useSnippetsStore()
   const [title, setTitle] = useState("")
-  const [language, setLanguage] = useState("javascript")
-  const [code, setCode] = useState("")
+  const [language, setLanguage] = useState(initialLanguage)
+  const [code, setCode] = useState(initialCode)
   const [snippetLabels, setSnippetLabels] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
 
@@ -109,16 +112,19 @@ export function NewSnippetEditor({ onClose }: NewSnippetEditorProps) {
     fetchLabels()
   }, [fetchLabels])
 
-  const handleSave = async () => {
+  const handleSave = async (openAfter = false) => {
     if (!code.trim()) return
     setIsSaving(true)
-    await createSnippet({
+    const snippet = await createSnippet({
       title: title || null,
       language,
       code,
       labels: snippetLabels,
     })
     setIsSaving(false)
+    if (openAfter && onSaveAndOpen) {
+      onSaveAndOpen(snippet.id)
+    }
     onClose()
   }
 
@@ -175,14 +181,21 @@ export function NewSnippetEditor({ onClose }: NewSnippetEditorProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
+        <div className="flex items-center justify-between px-4 py-3 border-t">
+          <Button variant="ghost" onClick={onClose}>
+            Discard
           </Button>
-          <Button onClick={handleSave} disabled={isSaving || !code.trim()}>
-            <Save className="h-4 w-4 mr-1" />
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {onSaveAndOpen && (
+              <Button variant="outline" onClick={() => handleSave(true)} disabled={isSaving || !code.trim()}>
+                Save & Open
+              </Button>
+            )}
+            <Button onClick={() => handleSave(false)} disabled={isSaving || !code.trim()}>
+              <Save className="h-4 w-4 mr-1" />
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

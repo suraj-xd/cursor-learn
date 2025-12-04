@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toaster"
+import { DeleteConfirm } from "@/components/ui/delete-confirm"
 import type { Snippet } from "@/types/snippets"
 
 interface SnippetCardProps {
@@ -23,6 +24,7 @@ const MAX_LINES = 20
 export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: SnippetCardProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   
   const Highlighter = SyntaxHighlighter as unknown as ComponentType<{
     style: Record<string, React.CSSProperties>
@@ -98,13 +100,21 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
             variant="ghost"
             size="sm"
             className="h-7 w-7 p-0 hover:text-destructive"
-            onClick={onDelete}
+            onClick={() => setShowDeleteConfirm(true)}
             title="Delete"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
+
+      <DeleteConfirm
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={onDelete}
+        title="Delete snippet?"
+        description="This will permanently delete this snippet. This action cannot be undone."
+      />
 
       <div className="relative">
         <div className="overflow-x-auto text-xs">

@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/toaster"
 import { Button } from "../ui/button"
+import { NewSnippetEditor } from "../snippets/snippet-editor"
 
 interface AgentCodeBlockProps {
   code: string
@@ -23,7 +24,7 @@ export function AgentCodeBlock({
   onSaveSnippet 
 }: AgentCodeBlockProps) {
   const [copied, setCopied] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [showSnippetEditor, setShowSnippetEditor] = useState(false)
   const Highlighter = SyntaxHighlighter as unknown as ComponentType<any>
 
   const handleCopy = async () => {
@@ -37,60 +38,58 @@ export function AgentCodeBlock({
     }
   }
 
-  const handleSaveSnippet = async () => {
-    try {
-      if (onSaveSnippet) {
-        onSaveSnippet(code, language)
-      } else {
-        await window.ipc.snippets.create({
-          code,
-          language,
-          sourceContext: "agent-chat",
-        })
-        toast.success("Saved to snippets")
-      }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch {
-      toast.error("Failed to save snippet")
+  const handleSaveSnippet = () => {
+    if (onSaveSnippet) {
+      onSaveSnippet(code, language)
+    } else {
+      setShowSnippetEditor(true)
     }
   }
 
   return (
-    <div className={cn("relative group rounded-lg overflow-hidden", className)}>
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <CodeBlockAction
-          icon={copied ? Check : Copy}
-          label={copied ? "Copied" : "Copy"}
-          onClick={handleCopy}
-          active={copied}
-        />
-        <CodeBlockAction
-          icon={saved ? Check : Save}
-          label={saved ? "Saved" : "Save to snippets"}
-          onClick={handleSaveSnippet}
-          active={saved}
-        />
-      </div>
+    <>
+      <div className={cn("relative group rounded-lg overflow-hidden", className)}>
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <CodeBlockAction
+            icon={copied ? Check : Copy}
+            label={copied ? "Copied" : "Copy"}
+            onClick={handleCopy}
+            active={copied}
+          />
+          <CodeBlockAction
+            icon={Save}
+            label="Save to snippets"
+            onClick={handleSaveSnippet}
+          />
+        </div>
       <div className="absolute top-2 left-3 z-10 text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">
         {language}
       </div>
-      <div className="overflow-x-auto pt-7">
-        <Highlighter
-          style={style}
-          language={language}
-          PreTag="div"
-          customStyle={{
-            margin: 0,
-            borderRadius: "0.5rem",
-            paddingTop: "0.75rem",
-          }}
-          wrapLongLines={false}
-        >
-          {code}
-        </Highlighter>
+        <div className="overflow-x-auto pt-7">
+          <Highlighter
+            style={style}
+            language={language}
+            PreTag="div"
+            customStyle={{
+              margin: 0,
+              borderRadius: "0.5rem",
+              paddingTop: "0.75rem",
+            }}
+            wrapLongLines={false}
+          >
+            {code}
+          </Highlighter>
+        </div>
       </div>
-    </div>
+
+      {showSnippetEditor && (
+        <NewSnippetEditor
+          initialCode={code}
+          initialLanguage={language}
+          onClose={() => setShowSnippetEditor(false)}
+        />
+      )}
+    </>
   )
 }
 

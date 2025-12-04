@@ -59,7 +59,7 @@ export function Navbar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 z-[1]">
+        <div className="flex items-center gap-1 z-[1] relative top-0.5">
           <Button
             variant="ghost"
             size="sm"
