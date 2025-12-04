@@ -101,6 +101,7 @@ export function AssistantSidebar({
   const compactingRef = useRef(false)
   const conversationIdRef = useRef<string | null>(null)
   const pendingSendRef = useRef<{ message: string; context?: string } | null>(null)
+  const lastFollowUpContextRef = useRef<string>("")
 
   const fullModelId = useMemo(() => `${selectedProvider}:${selectedModel}`, [selectedProvider, selectedModel])
   const maxTokens = useMemo(() => getMaxTokens(fullModelId), [fullModelId])
@@ -114,11 +115,23 @@ export function AssistantSidebar({
     }
   }, [])
 
+  const loadFollowUpSuggestions = useCallback(async (userMsg: string, aiMsg: string) => {
+    const context = `[USER]: ${userMsg}\n\n[ASSISTANT]: ${aiMsg}`
+    lastFollowUpContextRef.current = context
+    try {
+      const questions = await compactIpc.getSuggestions(context)
+      setSuggestedQuestions(questions)
+    } catch {
+      console.error("Failed to load follow-up suggestions")
+    }
+  }, [])
+
   const refreshSuggestions = useCallback(async () => {
-    if (!compactedChat?.compactedContent) return
+    const contextToUse = lastFollowUpContextRef.current || compactedChat?.compactedContent
+    if (!contextToUse) return
     setIsRefreshingSuggestions(true)
     try {
-      const questions = await compactIpc.getSuggestions(compactedChat.compactedContent)
+      const questions = await compactIpc.getSuggestions(contextToUse)
       setSuggestedQuestions(questions)
     } catch {
       console.error("Failed to refresh suggestions")
@@ -147,6 +160,7 @@ export function AssistantSidebar({
     setMessages((prev) => [...prev.filter((m) => m.role !== "system"), userMessage])
     setSidebarState("chatting")
     setIsLoading(true)
+    setSuggestedQuestions([])
 
     try {
       const conversationKey = workspaceId && currentConversation
@@ -198,6 +212,8 @@ export function AssistantSidebar({
       ])
       setUsageRefreshTrigger((prev) => prev + 1)
 
+      loadFollowUpSuggestions(messageContent, assistantMessage.content)
+
       if (isFirstMessage && currentChatId) {
         agentsIpc.chats
           .generateTitle({ chatId: currentChatId, userMessage: messageContent })
@@ -213,7 +229,7 @@ export function AssistantSidebar({
     } finally {
       setIsLoading(false)
     }
-  }, [hasApiKey, availableProviders, workspaceId, currentConversation, chatId, fullModelId, selectedProvider, getSystemContext])
+  }, [hasApiKey, availableProviders, workspaceId, currentConversation, chatId, fullModelId, selectedProvider, getSystemContext, loadFollowUpSuggestions])
 
   useEffect(() => {
     if (!open) return
@@ -457,6 +473,7 @@ export function AssistantSidebar({
     setMessages([])
     setChatId(null)
     setSuggestedQuestions([])
+    lastFollowUpContextRef.current = ""
     if (compactedChat) {
       loadSuggestedQuestions(compactedChat.compactedContent)
     }
@@ -469,17 +486,24 @@ export function AssistantSidebar({
       if (!bundle) return
 
       setChatId(chatToLoad.id)
+      const visibleMsgs = bundle.messages.filter((m) => m.role !== "system")
       setMessages(
-        bundle.messages
-          .filter((m) => m.role !== "system")
-          .map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-          }))
+        visibleMsgs.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+        }))
       )
       setSidebarState("chatting")
-      setSuggestedQuestions([])
+
+      const lastAssistant = [...visibleMsgs].reverse().find((m) => m.role === "assistant")
+      const lastUser = [...visibleMsgs].reverse().find((m) => m.role === "user")
+      if (lastUser && lastAssistant) {
+        loadFollowUpSuggestions(lastUser.content, lastAssistant.content)
+      } else {
+        setSuggestedQuestions([])
+        lastFollowUpContextRef.current = ""
+      }
 
       if (chatToLoad.modelId) {
         const [provider, model] = chatToLoad.modelId.split(":")
@@ -491,7 +515,7 @@ export function AssistantSidebar({
     } catch {
       toast.error("Failed to load chat")
     }
-  }, [])
+  }, [loadFollowUpSuggestions])
 
   const handleDeleteChat = useCallback(async (e: React.MouseEvent, chatToDelete: AgentChat) => {
     e.stopPropagation()
@@ -718,6 +742,21 @@ export function AssistantSidebar({
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Thinking...
+                </div>
+              )}
+              {!isLoading && suggestedQuestions.length > 0 && (
+                <div className="pt-2 space-y-1">
+                  <p className="text-[10px] text-muted-foreground mb-1">Follow up</p>
+                  {suggestedQuestions.slice(0, 3).map((q) => (
+                    <button
+                      key={q.question}
+                      type="button"
+                      onClick={() => handleSelectSuggestion(q.question)}
+                      className="w-full text-left text-[11px] px-2 py-1.5 rounded bg-muted/40 hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors line-clamp-2"
+                    >
+                      {q.question}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

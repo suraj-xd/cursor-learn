@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ApiKeyDialog } from "@/components/comman/api-key-dialog";
 import { agentsIpc } from "@/lib/agents/ipc";
-import { compactIpc, type CompactedChat, type CompactProgress } from "@/lib/agents/compact-ipc";
+import { compactIpc, type CompactedChat, type CompactProgress, type SuggestedQuestion } from "@/lib/agents/compact-ipc";
 import { APP_CONFIG } from "@/lib/config";
 import type {
   AgentApiKeyMetadata,
@@ -50,6 +50,7 @@ import { CompactContext } from "./context";
 import { ShiningText } from "@/components/comman/shinning-text";
 import VerticalCutReveal from "../xd-ui/vertical-cut-reveal";
 import { AssistantModelPicker, getInitialModel } from "@/components/workspace/assistant-model-picker";
+import { AssistantSuggestedQuestions } from "@/components/workspace/assistant-suggested-questions";
 import { UsageIndicator } from "./usage-indicator";
 
 type MentionedConversation = {
@@ -126,6 +127,9 @@ export function AgentsWorkspace() {
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
   const [mentionCompactProgress, setMentionCompactProgress] = useState<Record<string, CompactProgress | null>>({});
   const [usageRefreshTrigger, setUsageRefreshTrigger] = useState(0);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<SuggestedQuestion[]>([]);
+  const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false);
+  const lastContextRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const pushDebug = useCallback((level: DebugLog["level"], message: string) => {
@@ -278,45 +282,6 @@ export function AgentsWorkspace() {
 
   useEffect(() => {
     if (!selectedChatId) {
-      setBundle(null);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingMessages(true);
-    setAssistantError(null);
-
-    agentsIpc.chats
-      .get(selectedChatId)
-      .then((chatBundle) => {
-        if (cancelled) return;
-        if (!chatBundle) {
-          setBundle(null);
-          return;
-        }
-        setBundle(chatBundle);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : "Unable to load chat";
-          pushDebug("error", message);
-          toast.error(message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingMessages(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pushDebug, selectedChatId]);
-
-  useEffect(() => {
-    if (!selectedChatId) {
       setContextPreview(null);
       return;
     }
@@ -465,14 +430,89 @@ export function AgentsWorkspace() {
     [composer.mentionedConversations]
   );
 
+  const loadSuggestions = useCallback(async (context: string) => {
+    if (!context) return;
+    lastContextRef.current = context;
+    try {
+      const questions = await compactIpc.getSuggestions(context);
+      setSuggestedQuestions(questions);
+    } catch {
+      pushDebug("error", "Failed to load suggestions");
+    }
+  }, [pushDebug]);
+
+  const refreshSuggestions = useCallback(async () => {
+    if (!lastContextRef.current) return;
+    setIsRefreshingSuggestions(true);
+    try {
+      const questions = await compactIpc.getSuggestions(lastContextRef.current);
+      setSuggestedQuestions(questions);
+    } catch {
+      pushDebug("error", "Failed to refresh suggestions");
+    } finally {
+      setIsRefreshingSuggestions(false);
+    }
+  }, [pushDebug]);
+
+  useEffect(() => {
+    if (!selectedChatId) {
+      setBundle(null);
+      setSuggestedQuestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingMessages(true);
+    setAssistantError(null);
+    setSuggestedQuestions([]);
+
+    agentsIpc.chats
+      .get(selectedChatId)
+      .then((chatBundle) => {
+        if (cancelled) return;
+        if (!chatBundle) {
+          setBundle(null);
+          return;
+        }
+        setBundle(chatBundle);
+
+        const visibleMsgs = chatBundle.messages.filter((m) => m.role !== "system");
+        const lastAssistant = [...visibleMsgs].reverse().find((m) => m.role === "assistant");
+        const lastUser = [...visibleMsgs].reverse().find((m) => m.role === "user");
+        if (lastUser && lastAssistant) {
+          const context = `[USER]: ${lastUser.content}\n\n[ASSISTANT]: ${lastAssistant.content}`;
+          lastContextRef.current = context;
+          loadSuggestions(context);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          const message =
+            err instanceof Error ? err.message : "Unable to load chat";
+          pushDebug("error", message);
+          toast.error(message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingMessages(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pushDebug, selectedChatId, loadSuggestions]);
+
   const requestAssistantCompletion = useCallback(
-    async (chatId: string) => {
+    async (chatId: string, userMessage?: string) => {
       if (!chatId) {
         return;
       }
       setAssistantBusy(true);
       setAssistantError(null);
       setStreamingContent("");
+      setSuggestedQuestions([]);
       pushDebug("info", "Requesting assistant response (streaming)");
 
       const unsubscribe = agentsIpc.chats.onStreamChunk(
@@ -496,6 +536,11 @@ export function AgentsWorkspace() {
             : prev
         );
         pushDebug("info", "Assistant response received");
+
+        if (userMessage) {
+          const context = `[USER]: ${userMessage}\n\n[ASSISTANT]: ${message.content}`;
+          loadSuggestions(context);
+        }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unable to reach assistant";
@@ -510,7 +555,7 @@ export function AgentsWorkspace() {
         fetchChats();
       }
     },
-    [fetchChats, pushDebug]
+    [fetchChats, pushDebug, loadSuggestions]
   );
 
   const handleDeleteChat = useCallback(
@@ -707,7 +752,7 @@ export function AgentsWorkspace() {
     [mentionOpen, loadWorkspaceLogs]
   );
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (messageOverride?: string) => {
     if (!selectedChatId || composer.isSending) {
       return;
     }
@@ -719,11 +764,12 @@ export function AgentsWorkspace() {
       return;
     }
 
-    const trimmed = composer.value.trim();
+    const trimmed = (messageOverride ?? composer.value).trim();
     if (!trimmed) {
       return;
     }
 
+    setSuggestedQuestions([]);
     setComposer((prev) => ({ ...prev, isSending: true }));
     setAssistantError(null);
 
@@ -801,7 +847,7 @@ export function AgentsWorkspace() {
       }
 
       setComposer(defaultComposerState);
-      await requestAssistantCompletion(selectedChatId);
+      await requestAssistantCompletion(selectedChatId, trimmed);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to send message";
@@ -827,6 +873,10 @@ export function AgentsWorkspace() {
       event.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleSelectSuggestion = (question: string) => {
+    handleSendMessage(question);
   };
 
   const selectedChatTitle = bundle?.chat.title ?? "Select a chat";
@@ -969,6 +1019,10 @@ export function AgentsWorkspace() {
                 messages={bundle.messages}
                 isLoading={assistantBusy}
                 streamingContent={streamingContent}
+                suggestedQuestions={suggestedQuestions}
+                onSelectSuggestion={handleSelectSuggestion}
+                onRefreshSuggestions={refreshSuggestions}
+                isRefreshingSuggestions={isRefreshingSuggestions}
               />
 
               <div className="border-t border-border/40 p-3">
@@ -1058,7 +1112,7 @@ export function AgentsWorkspace() {
                   </div>
                   <Button
                     size="icon"
-                    onClick={handleSendMessage}
+                    onClick={() => handleSendMessage()}
                     disabled={
                       composer.isSending ||
                       !composer.value.trim() ||
@@ -1121,10 +1175,18 @@ function MessagesView({
   messages,
   isLoading = false,
   streamingContent = "",
+  suggestedQuestions = [],
+  onSelectSuggestion,
+  onRefreshSuggestions,
+  isRefreshingSuggestions = false,
 }: {
   messages: AgentMessage[];
   isLoading?: boolean;
   streamingContent?: string;
+  suggestedQuestions?: SuggestedQuestion[];
+  onSelectSuggestion?: (question: string) => void;
+  onRefreshSuggestions?: () => Promise<void>;
+  isRefreshingSuggestions?: boolean;
 }) {
   const { containerRef, endRef, isAtBottom, scrollToBottom } = useMessages({
     status: isLoading ? "streaming" : "idle",
@@ -1228,6 +1290,16 @@ function MessagesView({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+          {!isLoading && suggestedQuestions.length > 0 && onSelectSuggestion && (
+            <div className="mt-4 mb-2">
+              <AssistantSuggestedQuestions
+                questions={suggestedQuestions}
+                onSelect={onSelectSuggestion}
+                onRefresh={onRefreshSuggestions}
+                isRefreshing={isRefreshingSuggestions}
+              />
             </div>
           )}
           <div ref={endRef} className="h-4" />
