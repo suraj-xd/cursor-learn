@@ -14,4 +14,14 @@
     @apply bg-background text-foreground font-sans;
     letter-spacing: var(--tracking-normal);
   }
+  
+  ::selection {
+    background: rgba(217, 255, 82, 0.35);
+    color: inherit;
+  }
+  
+  ::-moz-selection {
+    background: rgba(217, 255, 82, 0.35);
+    color: inherit;
+  }
 }

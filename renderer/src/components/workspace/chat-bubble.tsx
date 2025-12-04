@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { CollapsibleCodeBlock } from '@/components/collapsible-code-block'
+import { TextSelectionToolbar } from '@/components/text-selection-toolbar'
 import { cn } from '@/lib/utils'
 import type { CSSProperties } from 'react'
 
@@ -88,29 +89,31 @@ export const ChatBubble = memo(function ChatBubble({
   const isUser = type === 'user'
 
   return (
-    <div
-      className={cn(
-        "p-4 rounded-lg",
-        isUser
-          ? "bg-muted border border-accent"
-          : "bg-muted border border-muted-foreground/30"
-      )}
-    >
-      <div className="flex items-center gap-2 mb-2 text-xs">
-        <Badge
-          className="border border-border"
-          variant={isUser ? "default" : "secondary"}
-        >
-          {isUser ? "You" : "AI"}
-        </Badge>
-        <span className="text-sm text-muted-foreground">
-          {formattedDate}
-        </span>
+    <TextSelectionToolbar source="raw-chat">
+      <div
+        className={cn(
+          "p-4 rounded-lg",
+          isUser
+            ? "bg-muted border border-accent"
+            : "bg-muted border border-muted-foreground/30"
+        )}
+      >
+        <div className="flex items-center gap-2 mb-2 text-xs">
+          <Badge
+            className="border border-border"
+            variant={isUser ? "default" : "secondary"}
+          >
+            {isUser ? "You" : "AI"}
+          </Badge>
+          <span className="text-sm text-muted-foreground">
+            {formattedDate}
+          </span>
+        </div>
+        <div className="prose dark:prose-invert max-w-none">
+          <MarkdownContent text={text} codeThemeStyle={codeThemeStyle} />
+        </div>
       </div>
-      <div className="prose dark:prose-invert max-w-none">
-        <MarkdownContent text={text} codeThemeStyle={codeThemeStyle} />
-      </div>
-    </div>
+    </TextSelectionToolbar>
   )
 })
 

@@ -52,6 +52,10 @@ import VerticalCutReveal from "../xd-ui/vertical-cut-reveal";
 import { AssistantModelPicker, getInitialModel } from "@/components/workspace/assistant-model-picker";
 import { AssistantSuggestedQuestions } from "@/components/workspace/assistant-suggested-questions";
 import { UsageIndicator } from "./usage-indicator";
+import { TextSelectionToolbar } from "@/components/text-selection-toolbar";
+import { AttachedSelection } from "@/components/attached-selections";
+import { CopyResponseButton } from "@/components/copy-response-button";
+import { useSelectionStore, selectionActions } from "@/store/selection";
 
 type MentionedConversation = {
   id: string;
@@ -272,6 +276,15 @@ export function AgentsWorkspace() {
     loadApiKeys();
     fetchChats();
   }, [fetchChats, loadApiKeys]);
+
+  useEffect(() => {
+    if (selectedChatId !== undefined) {
+      selectionActions.clearSelection();
+    }
+    return () => {
+      selectionActions.clearSelection();
+    };
+  }, [selectedChatId]);
 
   useEffect(() => {
     const chatFromUrl = searchParams.get("chat");
@@ -782,18 +795,29 @@ export function AgentsWorkspace() {
         messageCount: m.messageCount,
       }));
 
-    if (composer.mentionedConversations.length > 0) {
-      const contextSection = composer.mentionedConversations
-        .map(
-          (m) =>
-            `--- Referenced Conversation: "${m.title}" (${m.type}) ---\n${m.content}\n--- End Referenced Conversation ---`
-        )
-        .join("\n\n");
+    const attachedSelection = useSelectionStore.getState().selection;
+
+    if (composer.mentionedConversations.length > 0 || attachedSelection) {
+      const contextParts: string[] = [];
+
+      if (composer.mentionedConversations.length > 0) {
+        const conversationContext = composer.mentionedConversations
+          .map(
+            (m) =>
+              `--- Referenced Conversation: "${m.title}" (${m.type}) ---\n${m.content}\n--- End Referenced Conversation ---`
+          )
+          .join("\n\n");
+        contextParts.push(conversationContext);
+      }
+
+      if (attachedSelection) {
+        contextParts.push(`--- Highlighted Text ---\n${attachedSelection.text}\n--- End Highlighted Text ---`);
+      }
 
       const systemContext = await agentsIpc.messages.append({
         chatId: selectedChatId,
         role: "system",
-        content: `The user is referencing the following Cursor AI conversation history for context. Use this to understand their previous work and provide relevant assistance:\n\n${contextSection}`,
+        content: `The user is referencing the following content for context. Use this to understand their previous work and provide relevant assistance:\n\n${contextParts.join("\n\n")}`,
       });
 
       setBundle((prev) =>
@@ -847,6 +871,7 @@ export function AgentsWorkspace() {
       }
 
       setComposer(defaultComposerState);
+      selectionActions.clearSelection();
       await requestAssistantCompletion(selectedChatId, trimmed);
     } catch (err) {
       const message =
@@ -1015,15 +1040,17 @@ export function AgentsWorkspace() {
 
           {bundle && (
             <>
-              <MessagesView
-                messages={bundle.messages}
-                isLoading={assistantBusy}
-                streamingContent={streamingContent}
-                suggestedQuestions={suggestedQuestions}
-                onSelectSuggestion={handleSelectSuggestion}
-                onRefreshSuggestions={refreshSuggestions}
-                isRefreshingSuggestions={isRefreshingSuggestions}
-              />
+              <TextSelectionToolbar source="agent-chat" className="flex-1 flex flex-col overflow-hidden min-h-0">
+                <MessagesView
+                  messages={bundle.messages}
+                  isLoading={assistantBusy}
+                  streamingContent={streamingContent}
+                  suggestedQuestions={suggestedQuestions}
+                  onSelectSuggestion={handleSelectSuggestion}
+                  onRefreshSuggestions={refreshSuggestions}
+                  isRefreshingSuggestions={isRefreshingSuggestions}
+                />
+              </TextSelectionToolbar>
 
               <div className="border-t border-border/40 p-3">
                 {assistantError && (
@@ -1043,6 +1070,8 @@ export function AgentsWorkspace() {
                     </Button>
                   </div>
                 )}
+
+                <AttachedSelection className="mb-2" />
 
                 {composer.mentionedConversations.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-1.5">
@@ -1388,15 +1417,23 @@ function MessageBubble({ message }: { message: AgentMessage }) {
         >
           <AgentResponse className="text-sm">{message.content}</AgentResponse>
         </div>
-        <p
-          className={`mt-1 px-1 text-[11px] text-muted-foreground ${
-            isUser ? "text-right" : "text-left"
+        <div
+          className={`mt-1 px-1 flex items-center gap-2 ${
+            isUser ? "justify-end" : "justify-start"
           }`}
         >
-          {formatDistanceToNow(new Date(message.createdAt), {
-            addSuffix: true,
-          })}
-        </p>
+          <p className="text-[11px] text-muted-foreground">
+            {formatDistanceToNow(new Date(message.createdAt), {
+              addSuffix: true,
+            })}
+          </p>
+          {!isUser && (
+            <CopyResponseButton
+              content={message.content}
+              className="h-6 w-6 opacity-50 hover:opacity-100"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

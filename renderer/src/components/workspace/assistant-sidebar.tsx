@@ -46,6 +46,10 @@ import { CompactContext } from "@/components/agents/context"
 import { AssistantSuggestedQuestions } from "./assistant-suggested-questions"
 import { AssistantModelPicker, getInitialModel } from "./assistant-model-picker"
 import { PROVIDER_PRIORITY, getMaxTokens } from "@/lib/ai/config"
+import { TextSelectionToolbar } from "@/components/text-selection-toolbar"
+import { AttachedSelection } from "@/components/attached-selections"
+import { CopyResponseButton } from "@/components/copy-response-button"
+import { useSelectionStore, selectionActions } from "@/store/selection"
 
 interface AssistantSidebarProps {
   open: boolean
@@ -162,6 +166,8 @@ export function AssistantSidebar({
     setIsLoading(true)
     setSuggestedQuestions([])
 
+    const attachedSelection = useSelectionStore.getState().selection
+
     try {
       const conversationKey = workspaceId && currentConversation
         ? `${workspaceId}:${currentConversation.id}`
@@ -180,19 +186,37 @@ export function AssistantSidebar({
         currentChatId = chat.id
         setChatId(chat.id)
 
-        const context = contextContent || getSystemContext()
-        if (context) {
+        const baseContext = contextContent || getSystemContext()
+        const contextParts: string[] = []
+        
+        if (baseContext) {
+          contextParts.push(baseContext)
+        }
+        
+        if (attachedSelection) {
+          contextParts.push(`The user has highlighted the following text for context:\n\n--- Highlighted Text ---\n${attachedSelection.text}\n--- End Highlighted Text ---`)
+        }
+        
+        if (contextParts.length > 0) {
           await agentsIpc.messages.append({
             chatId: currentChatId,
             role: "system",
-            content: context,
+            content: contextParts.join("\n\n"),
           })
         }
 
         if (conversationKey) {
           setChatHistory((prev) => [chat, ...prev])
         }
+      } else if (attachedSelection) {
+        await agentsIpc.messages.append({
+          chatId: currentChatId,
+          role: "system",
+          content: `The user has highlighted the following text for context:\n\n--- Highlighted Text ---\n${attachedSelection.text}\n--- End Highlighted Text ---`,
+        })
       }
+
+      selectionActions.clearSelection()
 
       await agentsIpc.messages.append({
         chatId: currentChatId,
@@ -270,6 +294,8 @@ export function AssistantSidebar({
   }, [open, currentConversation, workspaceId, hasApiKey])
 
   useEffect(() => {
+    selectionActions.clearSelection()
+    
     if (!open || !currentConversation || !workspaceId) {
       setMessages([])
       setChatId(null)
@@ -719,52 +745,63 @@ export function AssistantSidebar({
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-1 px-3">
-            <div className="space-y-3 py-3">
-              {visibleMessages.map((msg) => (
-                <Message key={msg.id} from={msg.role === "user" ? "user" : "assistant"}>
-                  <MessageContent
-                    className={
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-2xl px-3 py-2"
-                        : "bg-transparent px-0 py-0"
-                    }
-                  >
-                    {msg.role === "assistant" ? (
-                      <Response className="text-sm">{msg.content}</Response>
-                    ) : (
-                      msg.content
-                    )}
-                  </MessageContent>
-                </Message>
-              ))}
-              {isLoading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Thinking...
-                </div>
-              )}
-              {!isLoading && suggestedQuestions.length > 0 && (
-                <div className="pt-2 space-y-1">
-                  <p className="text-[10px] text-muted-foreground mb-1">Follow up</p>
-                  {suggestedQuestions.slice(0, 3).map((q) => (
-                    <button
-                      key={q.question}
-                      type="button"
-                      onClick={() => handleSelectSuggestion(q.question)}
-                      className="w-full text-left text-[11px] px-2 py-1.5 rounded bg-muted/40 hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors line-clamp-2"
+          <TextSelectionToolbar source="assistant-sidebar" className="flex-1 flex flex-col overflow-hidden">
+            <ScrollArea className="flex-1 px-3">
+              <div className="space-y-3 py-3">
+                {visibleMessages.map((msg) => (
+                  <Message key={msg.id} from={msg.role === "user" ? "user" : "assistant"}>
+                    <MessageContent
+                      className={
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground rounded-2xl px-3 py-2"
+                          : "bg-transparent px-0 py-0"
+                      }
                     >
-                      {q.question}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </ScrollArea>
+                      {msg.role === "assistant" ? (
+                        <div className="group">
+                          <Response className="text-sm">{msg.content}</Response>
+                          <div className="mt-1 flex justify-end">
+                            <CopyResponseButton
+                              content={msg.content}
+                              className="h-6 w-6 opacity-50 hover:opacity-100"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        msg.content
+                      )}
+                    </MessageContent>
+                  </Message>
+                ))}
+                {isLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Thinking...
+                  </div>
+                )}
+                {!isLoading && suggestedQuestions.length > 0 && (
+                  <div className="pt-2 space-y-1">
+                    <p className="text-[10px] text-muted-foreground mb-1">Follow up</p>
+                    {suggestedQuestions.slice(0, 3).map((q) => (
+                      <button
+                        key={q.question}
+                        type="button"
+                        onClick={() => handleSelectSuggestion(q.question)}
+                        className="w-full text-left text-[11px] px-2 py-1.5 rounded bg-muted/40 hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors line-clamp-2"
+                      >
+                        {q.question}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </TextSelectionToolbar>
         )}
       </SidebarContent>
 
       <SidebarFooter>
+        <AttachedSelection className="mb-2" />
         <div className="flex gap-2">
           <textarea
             placeholder={
