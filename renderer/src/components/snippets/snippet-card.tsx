@@ -57,7 +57,7 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
           {snippet.isPinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
-          <Badge variant="secondary" className="text-[10px] py-0 shrink-0">
+          <Badge variant="secondary" className="font-mono uppercase text-[10px] py-0 shrink-0">
             {snippet.language}
           </Badge>
           <span className="text-sm font-medium truncate">{title}</span>
