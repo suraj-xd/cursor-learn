@@ -131,7 +131,7 @@ export function NewSnippetEditor({ onClose, onSaveAndOpen, initialCode = "", ini
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-background border rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center justify-between px-4  border-b">
           <h2 className="font-medium">New Snippet</h2>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
             <X className="h-4 w-4" />

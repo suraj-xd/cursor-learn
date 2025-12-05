@@ -1,0 +1,831 @@
+"use client"
+
+import { useEffect, useState, useMemo, useCallback, type ComponentType } from "react"
+import {
+  Code2,
+  ListChecks,
+  ToggleLeft,
+  Plus,
+  Loader2,
+  AlertCircle,
+  Sparkles,
+  BookOpen,
+  MoreVertical,
+  RefreshCw,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
+import Editor from "react-simple-code-editor"
+import Prism from "prismjs"
+import "prismjs/components/prism-javascript"
+import "prismjs/components/prism-typescript"
+import "prismjs/components/prism-jsx"
+import "prismjs/components/prism-tsx"
+import "prismjs/components/prism-css"
+import "prismjs/components/prism-json"
+import "prismjs/components/prism-yaml"
+import "prismjs/components/prism-bash"
+import "prismjs/components/prism-python"
+import "prismjs/components/prism-markdown"
+import "prismjs/themes/prism-tomorrow.css"
+import { useLearningsStore, learningsActions } from "@/store/learnings"
+import { useSettingsStore } from "@/store/settings"
+import { getCodeThemeStyle } from "@/lib/code-themes"
+import { agentsIpc } from "@/lib/agents/ipc"
+import { PROVIDER_PRIORITY } from "@/lib/ai/config"
+import { compactIpc } from "@/lib/agents/compact-ipc"
+import { ApiKeyDialog } from "@/components/comman/api-key-dialog"
+import type { ChatTab } from "@/types/workspace"
+import type { ProviderId } from "@/lib/ai/config"
+import type {
+  ExerciseType,
+  Exercise,
+  InteractiveExercise,
+  McqExercise,
+  TrueFalseExercise,
+  ExerciseAttempt,
+} from "@/types/learnings"
+import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Switch } from "@/components/ui/switch"
+
+interface LearningsViewProps {
+  workspaceId: string
+  conversationId: string
+  conversationTitle: string
+  bubbles: ChatTab["bubbles"]
+}
+
+const TAB_CONFIG: { type: ExerciseType; label: string; icon: typeof Code2 }[] = [
+  { type: "interactive", label: "Interactive", icon: Code2 },
+  { type: "mcq", label: "Multiple Choice", icon: ListChecks },
+  { type: "tf", label: "True / False", icon: ToggleLeft },
+]
+
+export function LearningsView({
+  workspaceId,
+  conversationId,
+  conversationTitle,
+  bubbles,
+}: LearningsViewProps) {
+  const [hasApiKey, setHasApiKey] = useState(false)
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<ProviderId>("google")
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash")
+  const [initialized, setInitialized] = useState(false)
+  const [contextText, setContextText] = useState(
+    bubbles.map((b) => `[${b.type.toUpperCase()}]: ${b.text}`).join("\n\n")
+  )
+
+  const {
+    exercises,
+    attempts,
+    activeTab,
+    isGenerating,
+    generationError,
+  } = useLearningsStore()
+  const { autoRunLearnings, setAutoRunLearnings } = useSettingsStore()
+
+  useEffect(() => {
+    setContextText(bubbles.map((b) => `[${b.type.toUpperCase()}]: ${b.text}`).join("\n\n"))
+  }, [bubbles])
+
+  useEffect(() => {
+    const loadCompact = async () => {
+      if (!workspaceId || !conversationId) return
+      try {
+        const compacted = await compactIpc.get(workspaceId, conversationId)
+        if (compacted?.compactedContent) {
+          setContextText(compacted.compactedContent)
+        }
+      } catch {
+        // fallback to raw context already set
+      }
+    }
+    loadCompact()
+  }, [workspaceId, conversationId])
+
+  useEffect(() => {
+    agentsIpc.apiKeys.list().then((keys) => {
+      const providers = keys
+        .map((k) => k.provider as ProviderId)
+        .filter((p) => PROVIDER_PRIORITY.includes(p))
+
+      const sortedProviders = Array.from(new Set(providers)).sort(
+        (a, b) => PROVIDER_PRIORITY.indexOf(a) - PROVIDER_PRIORITY.indexOf(b)
+      )
+
+      if (sortedProviders.length > 0) {
+        setHasApiKey(true)
+        setSelectedProvider(sortedProviders[0])
+        if (sortedProviders[0] === "google") {
+          setSelectedModel("gemini-2.0-flash")
+        } else if (sortedProviders[0] === "anthropic") {
+          setSelectedModel("claude-3-5-haiku-20241022")
+        } else if (sortedProviders[0] === "openai") {
+          setSelectedModel("gpt-4o-mini")
+        }
+      } else {
+        setHasApiKey(false)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!autoRunLearnings) return
+    if (hasApiKey && !initialized && exercises.length === 0 && contextText.length > 0) {
+      setInitialized(true)
+      learningsActions.generateForConversation(
+        contextText,
+        conversationTitle,
+        selectedProvider,
+        selectedModel,
+        { workspaceId, conversationId }
+      )
+    }
+  }, [autoRunLearnings, hasApiKey, initialized, exercises.length, contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId])
+
+  const handleAddMore = useCallback(() => {
+    learningsActions.addMoreExercises(
+      contextText,
+      conversationTitle,
+      selectedProvider,
+      selectedModel,
+      { workspaceId, conversationId },
+      activeTab,
+      3
+    )
+  }, [contextText, conversationTitle, selectedProvider, selectedModel, activeTab, workspaceId, conversationId])
+
+  const handleRegenerate = useCallback(() => {
+    learningsActions.clearExercises()
+    setInitialized(true)
+    learningsActions.generateForConversation(
+      contextText,
+      conversationTitle,
+      selectedProvider,
+      selectedModel,
+      { workspaceId, conversationId }
+    )
+  }, [contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId])
+
+  const filteredExercises = useMemo(() => {
+    return exercises.filter((ex) => ex.type === activeTab)
+  }, [exercises, activeTab])
+
+  if (!hasApiKey) {
+    return (
+      <div className="h-full flex items-center justify-center p-8">
+        <div className="text-center max-w-sm">
+          <BookOpen className="h-10 w-10 mx-auto mb-4 text-muted-foreground/50" />
+          <h3 className="text-lg font-medium mb-2">API Key Required</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Add an API key to generate learning exercises from this conversation.
+          </p>
+          <Button onClick={() => setShowApiKeyDialog(true)}>
+            Add API Key
+          </Button>
+        </div>
+        <ApiKeyDialog
+          open={showApiKeyDialog}
+          onOpenChange={setShowApiKeyDialog}
+          provider="an AI provider"
+          feature="learnings"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-2">
+        <div className="flex items-center gap-2">
+          {TAB_CONFIG.map(({ type, label, icon: Icon }) => {
+            const count = exercises.filter((ex) => ex.type === type).length
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => learningsActions.setActiveTab(type)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                  activeTab === type
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {count > 0 && (
+                  <Badge
+                    variant={activeTab === type ? "secondary" : "outline"}
+                    className="h-5 min-w-5 px-1.5 text-xs"
+                  >
+                    {count}
+                  </Badge>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={handleRegenerate} className="gap-2 cursor-pointer">
+              <RefreshCw className="w-3.5 h-3.5" />
+              Regenerate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <div className="flex items-center justify-between px-2 py-1.5">
+              <span className="text-sm">Auto Run</span>
+              <Switch
+                checked={autoRunLearnings}
+                className="border border-border"
+                onCheckedChange={setAutoRunLearnings}
+              />
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-4">
+          {isGenerating && filteredExercises.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="relative mb-4">
+                <Sparkles className="h-8 w-8 text-primary animate-pulse" />
+              </div>
+              <p className="text-sm font-medium">Generating exercises...</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Creating practice exercises from your conversation
+              </p>
+            </div>
+          ) : filteredExercises.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <BookOpen className="h-8 w-8 text-muted-foreground/50 mb-4" />
+              <p className="text-sm text-muted-foreground">
+                No {activeTab === "interactive" ? "interactive" : activeTab === "mcq" ? "multiple choice" : "true/false"} exercises yet
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4 gap-2"
+                onClick={handleAddMore}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Generate Exercises
+              </Button>
+            </div>
+          ) : (
+            <>
+              {filteredExercises.map((exercise) => (
+                <ExerciseCard
+                  key={exercise.id}
+                  exercise={exercise}
+                  attempt={attempts[exercise.id]}
+                  provider={selectedProvider}
+                  modelId={selectedModel}
+                  workspaceId={workspaceId}
+                  conversationId={conversationId}
+                />
+              ))}
+
+              {generationError && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <p>{generationError}</p>
+                </div>
+              )}
+
+              <div className="flex justify-center pt-2 pb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleAddMore}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  Add More Exercises
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
+interface ExerciseCardProps {
+  exercise: Exercise
+  attempt?: ExerciseAttempt
+  provider: ProviderId
+  modelId: string
+  workspaceId: string
+  conversationId: string
+}
+
+function ExerciseCard({ exercise, attempt, provider, modelId, workspaceId, conversationId }: ExerciseCardProps) {
+  if (exercise.type === "interactive") {
+    return (
+      <InteractiveCard
+        exercise={exercise}
+        attempt={attempt}
+        provider={provider}
+        modelId={modelId}
+        workspaceId={workspaceId}
+        conversationId={conversationId}
+      />
+    )
+  }
+  if (exercise.type === "mcq") {
+    return <McqCard exercise={exercise} attempt={attempt} />
+  }
+  return <TfCard exercise={exercise} attempt={attempt} />
+}
+
+interface InteractiveCardProps {
+  exercise: InteractiveExercise
+  attempt?: ExerciseAttempt
+  provider: ProviderId
+  modelId: string
+  workspaceId: string
+  conversationId: string
+}
+
+function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, conversationId }: InteractiveCardProps) {
+  const { codeTheme } = useSettingsStore()
+  const codeStyle = useMemo(() => getCodeThemeStyle(codeTheme), [codeTheme])
+  const { isEvaluating } = useLearningsStore()
+
+  const [userCode, setUserCode] = useState(exercise.starterCode)
+  const [showSolution, setShowSolution] = useState(false)
+  const changedLines = useMemo(() => {
+    const starter = exercise.starterCode.split("\n")
+    const expected = exercise.expectedSolution.split("\n")
+    const max = Math.max(starter.length, expected.length)
+    const changed = new Set<number>()
+    for (let i = 0; i < max; i++) {
+      if (starter[i] !== expected[i]) changed.add(i + 1)
+    }
+    return changed
+  }, [exercise.starterCode, exercise.expectedSolution])
+
+  const Highlighter = SyntaxHighlighter as unknown as ComponentType<{
+    style: Record<string, React.CSSProperties>
+    language: string
+    PreTag: string
+    customStyle: React.CSSProperties
+    children: string
+  }>
+
+  const getLangGrammar = (lang: string): Prism.Grammar => {
+    const langKey = lang.toLowerCase()
+    const map: Record<string, string> = {
+      javascript: "javascript",
+      js: "javascript",
+      typescript: "typescript",
+      ts: "typescript",
+      jsx: "jsx",
+      tsx: "tsx",
+      css: "css",
+      json: "json",
+      yaml: "yaml",
+      yml: "yaml",
+      bash: "bash",
+      shell: "bash",
+      sh: "bash",
+      python: "python",
+      py: "python",
+      markdown: "markdown",
+      md: "markdown",
+    }
+    const resolved = map[langKey] || "javascript"
+    return Prism.languages[resolved] || Prism.languages.javascript
+  }
+
+  const highlightWithLineNumbers = (code: string) => {
+    const grammar = getLangGrammar(exercise.language)
+    const langKey = exercise.language.toLowerCase()
+    const resolvedLang = langKey === "js" ? "javascript" : langKey === "ts" ? "typescript" : langKey === "py" ? "python" : langKey === "sh" ? "bash" : langKey === "yml" ? "yaml" : langKey === "md" ? "markdown" : langKey
+    
+    return Prism.highlight(code, grammar, resolvedLang)
+      .split("\n")
+      .map((line, i) => `<span class="editor-line-number">${i + 1}</span>${line}`)
+      .join("\n")
+  }
+
+  const handleVerify = () => {
+    learningsActions.evaluateInteractive(
+      exercise,
+      userCode,
+      provider,
+      modelId,
+      { workspaceId, conversationId }
+    )
+  }
+
+  const handleReset = () => {
+    setUserCode(exercise.starterCode)
+    learningsActions.resetAttempt(exercise.id)
+    setShowSolution(false)
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <Code2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Interactive Exercise</span>
+          <DifficultyBadge difficulty={exercise.difficulty} />
+        </div>
+        {attempt && <StatusBadge status={attempt.status} />}
+      </div>
+
+      <div className="p-4 space-y-4">
+        <p className="text-sm">{exercise.prompt || "Exercise"}</p>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <span aria-hidden>⌨️</span>
+              {exercise.language.toUpperCase()}
+            </span>
+            {exercise.hints && exercise.hints.length > 0 && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <span aria-hidden>✍️</span>
+                {exercise.hints[0]}
+              </span>
+            )}
+          </div>
+          <div className="rounded-md border bg-[#1d1f21] overflow-hidden">
+            <style>{`
+              .editor-line-number {
+                display: inline-block;
+                width: 2.5em;
+                text-align: right;
+                padding-right: 1em;
+                margin-right: 0.5em;
+                color: #636d83;
+                user-select: none;
+                pointer-events: none;
+              }
+            `}</style>
+            <Editor
+              value={userCode}
+              onValueChange={setUserCode}
+              highlight={highlightWithLineNumbers}
+              padding={12}
+              disabled={attempt?.status === "correct"}
+              className="font-mono text-xs min-h-[120px] focus-within:ring-2 focus-within:ring-primary/50"
+              style={{
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                fontSize: "0.75rem",
+                lineHeight: 1.6,
+                background: "transparent",
+              }}
+              textareaClassName="focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {attempt?.feedback && (
+          <div
+            className={cn(
+              "p-3 rounded-lg text-sm",
+              attempt.status === "correct"
+                ? "bg-green-500/10 text-green-700 dark:text-green-400"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+            )}
+          >
+            {attempt.feedback}
+          </div>
+        )}
+
+        {showSolution && (
+          <div className="space-y-2">
+            <span className="text-xs text-muted-foreground flex items-center gap-2">
+              Expected Solution
+              <span className="inline-flex items-center gap-1 text-[10px] text-green-600">
+                <span className="w-2 h-2 rounded-sm bg-green-500/30 border-l-2 border-green-500" />
+                changed
+              </span>
+            </span>
+            <div className="rounded-md border bg-muted/30 overflow-hidden font-mono text-xs py-2">
+              {exercise.expectedSolution.split("\n").map((line, idx) => {
+                const lineNum = idx + 1
+                const isChanged = changedLines.has(lineNum)
+                return (
+                  <div
+                    key={`solution-line-${lineNum}`}
+                    className={cn(
+                      "flex px-1 leading-5",
+                      isChanged && "bg-green-500/15 border-l-2 border-green-500"
+                    )}
+                  >
+                    <span className="w-8 shrink-0 text-right pr-3 text-muted-foreground/40 select-none">
+                      {lineNum}
+                    </span>
+                    <Highlighter
+                      style={codeStyle}
+                      language={exercise.language}
+                      PreTag="span"
+                      customStyle={{
+                        margin: 0,
+                        padding: 0,
+                        background: "transparent",
+                        display: "inline",
+                      }}
+                    >
+                      {line || " "}
+                    </Highlighter>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2">
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            Reset
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSolution(!showSolution)}
+            >
+              {showSolution ? "Hide Solution" : "Show Solution"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleVerify}
+              disabled={isEvaluating || attempt?.status === "correct"}
+            >
+              {isEvaluating ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : null}
+              Verify
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface McqCardProps {
+  exercise: McqExercise
+  attempt?: ExerciseAttempt
+}
+
+function McqCard({ exercise, attempt }: McqCardProps) {
+  const [selectedOption, setSelectedOption] = useState<string | null>(
+    attempt?.userAnswer as string | null
+  )
+  const [showExplanation, setShowExplanation] = useState(false)
+
+  const handleSubmit = () => {
+    if (selectedOption) {
+      learningsActions.submitMcqAnswer(exercise.id, selectedOption)
+    }
+  }
+
+  const handleReset = () => {
+    setSelectedOption(null)
+    learningsActions.resetAttempt(exercise.id)
+    setShowExplanation(false)
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <ListChecks className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Multiple Choice</span>
+          <DifficultyBadge difficulty={exercise.difficulty} />
+        </div>
+        {attempt && <StatusBadge status={attempt.status} />}
+      </div>
+
+      <div className="p-4 space-y-4">
+        <p className="text-sm font-medium">
+          {exercise.prompt || "Question"}
+        </p>
+
+        <div className="space-y-2">
+          {exercise.options.map((option) => {
+            const isSelected = selectedOption === option.id
+            const showResult = attempt?.status !== undefined && attempt.status !== "fresh"
+            const isCorrectOption = option.isCorrect
+            
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => !showResult && setSelectedOption(option.id)}
+                disabled={showResult}
+                className={cn(
+                  "w-full text-left p-3 rounded-md border text-sm transition-colors",
+                  showResult && isCorrectOption
+                    ? "border-green-500 bg-green-500/10"
+                    : showResult && isSelected && !isCorrectOption
+                    ? "border-red-500 bg-red-500/10"
+                    : isSelected
+                    ? "border-primary bg-primary/10"
+                    : "border-border hover:border-muted-foreground/50"
+                )}
+              >
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {(attempt?.status === "correct" || showExplanation) && (
+          <div className="p-3 rounded-lg bg-muted/50 text-sm">
+            <span className="font-medium">Explanation: </span>
+            {exercise.explanation}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2">
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            Reset
+          </Button>
+          <div className="flex items-center gap-2">
+            {attempt?.status === "incorrect" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowExplanation(!showExplanation)}
+              >
+                {showExplanation ? "Hide" : "Show"} Explanation
+              </Button>
+            )}
+            <Button
+              size="sm"
+              onClick={handleSubmit}
+              disabled={!selectedOption || attempt?.status === "correct"}
+            >
+              Check Answer
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface TfCardProps {
+  exercise: TrueFalseExercise
+  attempt?: ExerciseAttempt
+}
+
+function TfCard({ exercise, attempt }: TfCardProps) {
+  const [selectedAnswer, setSelectedAnswer] = useState<boolean | null>(
+    attempt?.userAnswer as boolean | null
+  )
+  const [showExplanation, setShowExplanation] = useState(false)
+
+  const handleSubmit = (answer: boolean) => {
+    setSelectedAnswer(answer)
+    learningsActions.submitTfAnswer(exercise.id, answer)
+  }
+
+  const handleReset = () => {
+    setSelectedAnswer(null)
+    learningsActions.resetAttempt(exercise.id)
+    setShowExplanation(false)
+  }
+
+  const showResult = attempt?.status !== undefined && attempt.status !== "fresh"
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">True or False</span>
+          <DifficultyBadge difficulty={exercise.difficulty} />
+        </div>
+        {attempt && <StatusBadge status={attempt.status} />}
+      </div>
+
+      <div className="p-4 space-y-4">
+        <p className="text-sm">
+          {exercise.statement || exercise.prompt || "True/False question"}
+        </p>
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant={selectedAnswer === true ? "default" : "outline"}
+            size="sm"
+            onClick={() => !showResult && handleSubmit(true)}
+            disabled={showResult}
+            className={cn(
+              "flex-1",
+              showResult && exercise.correct === true && "border-green-500 bg-green-500/10 text-green-700",
+              showResult && selectedAnswer === true && !exercise.correct && "border-red-500 bg-red-500/10 text-red-700"
+            )}
+          >
+            True
+          </Button>
+          <Button
+            variant={selectedAnswer === false ? "default" : "outline"}
+            size="sm"
+            onClick={() => !showResult && handleSubmit(false)}
+            disabled={showResult}
+            className={cn(
+              "flex-1",
+              showResult && exercise.correct === false && "border-green-500 bg-green-500/10 text-green-700",
+              showResult && selectedAnswer === false && exercise.correct && "border-red-500 bg-red-500/10 text-red-700"
+            )}
+          >
+            False
+          </Button>
+        </div>
+
+        {(attempt?.status === "correct" || showExplanation) && (
+          <div className="p-3 rounded-lg bg-muted/50 text-sm">
+            <span className="font-medium">Explanation: </span>
+            {exercise.explanation}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2">
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            Reset
+          </Button>
+          {attempt?.status === "incorrect" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExplanation(!showExplanation)}
+            >
+              {showExplanation ? "Hide" : "Show"} Explanation
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DifficultyBadge({ difficulty }: { difficulty: Exercise["difficulty"] }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] px-1.5 py-0",
+        difficulty === "easy" && "text-green-600 border-green-500/50",
+        difficulty === "medium" && "text-amber-600 border-amber-500/50",
+        difficulty === "hard" && "text-red-600 border-red-500/50"
+      )}
+    >
+      {difficulty}
+    </Badge>
+  )
+}
+
+function StatusBadge({ status }: { status: ExerciseAttempt["status"] }) {
+  if (status === "fresh") return null
+  
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] px-1.5 py-0",
+        status === "correct" && "text-green-600 border-green-500/50 bg-green-500/10",
+        status === "incorrect" && "text-amber-600 border-amber-500/50 bg-amber-500/10",
+        status === "attempted" && "text-blue-600 border-blue-500/50 bg-blue-500/10"
+      )}
+    >
+      {status === "correct" ? "Correct" : status === "incorrect" ? "Try Again" : "Attempted"}
+    </Badge>
+  )
+}

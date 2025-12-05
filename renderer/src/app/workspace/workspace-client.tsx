@@ -18,6 +18,7 @@ import { useWorkspaceDetailStore, selectSelectedChat, workspaceDetailActions } f
 import { ChatView } from '@/components/workspace/chat-view'
 import { CompactedChatView } from '@/components/workspace/compacted-chat-view'
 import { OverviewView } from '@/components/workspace/overview-view'
+import { LearningsView } from '@/components/workspace/learnings-view'
 import { cn } from '@/lib/utils'
 
 type ContentTab = 'overview' | 'learnings' | 'sources' | 'compacted' | 'raw'
@@ -120,6 +121,9 @@ const ChatContentTabs = memo(function ChatContentTabs({
         </button>
         <button type="button" onClick={() => onTabChange('learnings')} className={tabClass('learnings')}>
           <h2 className="font-semibold font-mono uppercase text-xs">Learnings</h2>
+        </button>
+        <button type="button" onClick={() => onTabChange('sources')} className={tabClass('sources')}>
+          <h2 className="font-semibold font-mono uppercase text-xs">Sources</h2>
         </button>
         <button type="button" onClick={() => onTabChange('compacted')} className={tabClass('compacted')}>
           <h2 className="font-semibold font-mono uppercase text-xs flex items-center gap-1.5">
@@ -253,6 +257,15 @@ function WorkspaceClientInner() {
                   {activeContentTab === 'overview' ? (
                     <Suspense fallback={<ChatViewSkeleton />}>
                       <OverviewView
+                        workspaceId={workspaceId ?? ''}
+                        conversationId={selectedChat.id}
+                        conversationTitle={selectedChat.title}
+                        bubbles={selectedChat.bubbles}
+                      />
+                    </Suspense>
+                  ) : activeContentTab === 'learnings' ? (
+                    <Suspense fallback={<ChatViewSkeleton />}>
+                      <LearningsView
                         workspaceId={workspaceId ?? ''}
                         conversationId={selectedChat.id}
                         conversationTitle={selectedChat.title}
