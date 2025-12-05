@@ -4,6 +4,8 @@ export interface ConversationPreview {
   id: string
   name: string
   lastUpdatedAt: number
+  createdAt: number
+  messageCount: number
 }
 
 export interface WorkspaceProject {

@@ -14,6 +14,8 @@ export interface ConversationPreview {
   id: string
   name: string
   lastUpdatedAt: number
+  createdAt: number
+  messageCount: number
 }
 
 export interface WorkspaceProject {
@@ -300,6 +302,7 @@ export async function listWorkspaces(): Promise<WorkspaceProject[]> {
     newlyCreatedFiles: Array<{ uri: { path: string } }>
     lastUpdatedAt: number
     createdAt: number
+    messageCount: number
   }>> = {}
 
   const globalDbPath = path.join(workspacePath, '..', 'globalStorage', 'state.vscdb')
@@ -343,12 +346,16 @@ export async function listWorkspaces(): Promise<WorkspaceProject[]> {
           if (!conversationMap[projectId]) {
             conversationMap[projectId] = []
           }
+          const messageCount = Array.isArray(composerData.fullConversationHeadersOnly) 
+            ? composerData.fullConversationHeadersOnly.length 
+            : 0
           conversationMap[projectId].push({
             composerId,
             name: composerData.name || `Conversation ${composerId.slice(0, 8)}`,
             newlyCreatedFiles: composerData.newlyCreatedFiles || [],
             lastUpdatedAt: composerData.lastUpdatedAt || composerData.createdAt,
-            createdAt: composerData.createdAt
+            createdAt: composerData.createdAt,
+            messageCount
           })
         } catch {
           // ignore invalid composer data
@@ -384,7 +391,9 @@ export async function listWorkspaces(): Promise<WorkspaceProject[]> {
       .map(c => ({
         id: c.composerId,
         name: c.name,
-        lastUpdatedAt: c.lastUpdatedAt
+        lastUpdatedAt: c.lastUpdatedAt,
+        createdAt: c.createdAt,
+        messageCount: c.messageCount
       }))
     projects.push({
       id: entry.name,

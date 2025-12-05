@@ -1,124 +1,161 @@
-"use client"
+"use client";
 
-import { memo, useEffect, useMemo } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import Link from 'next/link'
-import { Loading } from "@/components/ui/loading"
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
-import { FolderX, GitBranch, ChevronRight, CornerDownRight, DiamondIcon } from "lucide-react"
-import { useWorkspaceListStore } from '@/store/workspace'
-import type { ConversationPreview } from '@/services/workspace'
+import { memo, useEffect, useMemo, useState, useCallback } from "react";
+import { formatDistanceToNow, format, isToday } from "date-fns";
+import Link from "next/link";
+import { Loading } from "@/components/ui/loading";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
+import { FolderX, FolderOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { TextIcon, FileTextIcon, ClockIcon } from "@radix-ui/react-icons";
+import type { ConversationPreview } from "@/services/workspace";
+import { cn } from "@/lib/utils";
+import { useWorkspaceListStore } from "@/store/workspace";
 
-const MAX_VISIBLE_CONVERSATIONS = 3
+const MAX_VISIBLE_ROWS = 10;
 
-interface ConversationItemProps {
-  conversation: ConversationPreview
-  projectId: string
+interface ConversationRowProps {
+  conversation: ConversationPreview;
+  projectId: string;
+  isExpanded?: boolean;
 }
 
-const ConversationItem = memo(function ConversationItem({ 
-  conversation, 
-  projectId
-}: ConversationItemProps) {
+const ConversationRow = memo(function ConversationRow({
+  conversation,
+  projectId,
+  isExpanded,
+}: ConversationRowProps) {
   const timeAgo = useMemo(() => {
-    return formatDistanceToNow(new Date(conversation.lastUpdatedAt), { addSuffix: true })
-  }, [conversation.lastUpdatedAt])
+    return formatDistanceToNow(new Date(conversation.lastUpdatedAt), {
+      addSuffix: true,
+    });
+  }, [conversation.lastUpdatedAt]);
+
+  const createdDate = useMemo(() => {
+    const date = new Date(conversation.createdAt || conversation.lastUpdatedAt);
+    if (isToday(date)) {
+      return formatDistanceToNow(date, { addSuffix: true });
+    }
+    return format(date, "MMM d");
+  }, [conversation.createdAt, conversation.lastUpdatedAt]);
 
   return (
-    <div className="relative flex items-start group">
-      <div className="absolute left-1.5 top-2 flex items-center">
-        <CornerDownRight className="w-3 h-3 text-muted-foreground" />
-      </div>
-      <div className="ml-4 pl-2 py-1 flex items-center gap-2 min-w-0">
-        <Link 
-          href={`/workspace?id=${projectId}&tab=${conversation.id}`}
-          className="text-sm text-muted-foreground hover:text-foreground truncate transition-colors"
-        >
-          {conversation.name}
-        </Link>
-        <span className="text-xs text-muted-foreground/60 shrink-0">
-          {timeAgo}
-        </span>
-      </div>
-    </div>
-  )
-})
-
-interface ConversationBranchProps {
-  conversations: ConversationPreview[]
-  projectId: string
-}
-
-const ConversationBranch = memo(function ConversationBranch({ 
-  conversations, 
-  projectId 
-}: ConversationBranchProps) {
-  const visibleConversations = useMemo(() => 
-    conversations.slice(0, MAX_VISIBLE_CONVERSATIONS), 
-    [conversations]
-  )
-  
-  const remainingCount = conversations.length - MAX_VISIBLE_CONVERSATIONS
-
-  return (
-    <div className="relative ml-4 mt-2">
-      {visibleConversations.map((conv) => (
-        <ConversationItem
-          key={conv.id}
-          conversation={conv}
-          projectId={projectId}
-        />
-      ))}
-      {remainingCount > 0 && (
-        <div className="relative flex items-start">
-          <Link 
-            href={`/workspace?id=${projectId}`}
-            className="ml-4 pl-2 py-1 text-sm text-muted-foreground/70 hover:text-foreground flex items-center gap-1 transition-colors"
-          >
-            <span className="text-xs">+{remainingCount} more</span>
-            <ChevronRight className="w-3 h-3" />
-          </Link>
-        </div>
+    <Link
+      href={`/workspace?id=${projectId}&tab=${conversation.id}`}
+      className={cn(
+        "grid grid-cols-[1fr_150px_150px] gap-3 px-3 py-2 text-sm hover:bg-muted/50 transition-colors border-b border-border/50 last:border-b-0",
+        isExpanded && "animate-in fade-in-0 duration-300"
       )}
-    </div>
-  )
-})
+    >
+      <span className="truncate text-muted-foreground/50 hover:text-foreground transition-colors">
+        {conversation.name}
+      </span>
+      <span
+        className="text-xs text-muted-foreground text-right whitespace-nowrap font-mono uppercase tracking-wider"
+        title={timeAgo}
+      >
+        {createdDate}
+      </span>
+      <span className="text-xs text-muted-foreground text-right tabular-nums font-mono uppercase tracking-wider">
+        {conversation.messageCount} msg
+      </span>
+    </Link>
+  );
+});
 
-interface WorkspaceRowProps {
+interface WorkspaceCardProps {
   project: {
-    id: string
-    name: string
-    conversationCount: number
-    conversations: ConversationPreview[]
-  }
+    id: string;
+    name: string;
+    conversationCount: number;
+    conversations: ConversationPreview[];
+  };
 }
 
-const WorkspaceRow = memo(function WorkspaceRow({ project }: WorkspaceRowProps) {
-  const hasConversations = project.conversations && project.conversations.length > 0
+const WorkspaceCard = memo(function WorkspaceCard({
+  project,
+}: WorkspaceCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hasMoreRows = project.conversations.length > MAX_VISIBLE_ROWS;
+  const remainingCount = project.conversations.length - MAX_VISIBLE_ROWS;
+
+  const visibleConversations = useMemo(() => {
+    if (isExpanded) return project.conversations;
+    return project.conversations.slice(0, MAX_VISIBLE_ROWS);
+  }, [project.conversations, isExpanded]);
+
+  const toggleExpand = useCallback(() => {
+    setIsExpanded((prev) => !prev);
+  }, []);
+
+  if (project.conversations.length === 0) return null;
 
   return (
-    <div className="border border-border bg-muted/50 dark:bg-muted/10 rounded-lg p-2">
-      <div className="flex items-center gap-3">
-        <DiamondIcon className="w-3 h-3 text-primary shrink-0 ml-1" />
-        <Link 
-          href={`/workspace?id=${project.id}`}
-          className="font-medium hover:underline flex-1 truncate"
-        >
+    <div className="border border-border rounded-lg overflow-hidden bg-card">
+      <Link
+        href={`/workspace?id=${project.id}`}
+        className="flex items-center gap-2.5 px-3 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors border-b border-border"
+      >
+        <span className="font-medium truncate flex items-center gap-1 flex-1 bg-muted px-2 py-1 rounded-md border border-border/50 w-fit">
+          <FolderOpen className="w-4 h-4 text-primary shrink-0" />
           {project.name}
-        </Link>
-        <span className="text-xs text-green-500 uppercase font-mono">
-          {project.conversationCount} conversation{project.conversationCount !== 1 ? 's' : ''}
         </span>
+        <span className="text-xs text-muted-foreground/70 tabular-nums bg-muted p-2 rounded-md border border-border/50">
+          {project.conversationCount} Chat
+          {project.conversationCount !== 1 ? "s" : ""}
+        </span>
+      </Link>
+
+      <div className="divide-y divide-border/50">
+        <div className="grid grid-cols-[1fr_150px_150px] gap-3 px-3 py-1.5 text-xs text-muted-foreground/50 uppercase tracking-wider font-medium border-b border-border/50">
+          <span className="flex items-center gap-1">
+            <TextIcon className="w-3 h-3" /> Name
+          </span>
+          <span className="text-right flex items-center justify-end gap-1">
+            <ClockIcon className="w-3 h-3" /> Updated
+          </span>
+          <span className="text-right flex items-center justify-end gap-1">
+            <FileTextIcon className="w-3 h-3" /> Messages
+          </span>
+        </div>
+
+        {visibleConversations.map((conv, idx) => (
+          <ConversationRow
+            key={conv.id}
+            conversation={conv}
+            projectId={project.id}
+            isExpanded={isExpanded && idx >= MAX_VISIBLE_ROWS}
+          />
+        ))}
       </div>
-      {hasConversations && (
-        <ConversationBranch 
-          conversations={project.conversations} 
-          projectId={project.id}
-        />
+
+      {hasMoreRows && (
+        <button
+          type="button"
+          onClick={toggleExpand}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors border-t border-border/50"
+        >
+          {isExpanded ? (
+            <>
+              <ChevronUp className="w-3.5 h-3.5" />
+              Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-3.5 h-3.5" />
+              Show {remainingCount} more
+            </>
+          )}
+        </button>
       )}
     </div>
-  )
-})
+  );
+});
 
 const EmptyState = memo(function EmptyState() {
   return (
@@ -129,29 +166,39 @@ const EmptyState = memo(function EmptyState() {
         </EmptyMedia>
         <EmptyTitle>No Projects Found</EmptyTitle>
         <EmptyDescription>
-          No Cursor workspace projects were found. This could be due to an incorrect 
-          workspace path configuration. Check the <Link href="/config" className="underline">configuration page</Link> to 
-          verify your Cursor workspace storage location.
+          No Cursor workspace projects were found. This could be due to an
+          incorrect workspace path configuration. Check the{" "}
+          <Link href="/config" className="underline">
+            configuration page
+          </Link>{" "}
+          to verify your Cursor workspace storage location.
         </EmptyDescription>
       </EmptyHeader>
     </Empty>
-  )
-})
+  );
+});
 
 export const WorkspaceList = memo(function WorkspaceList() {
-  const { projects, isLoading, fetchProjects } = useWorkspaceListStore()
+  const { projects, isLoading, fetchProjects } = useWorkspaceListStore();
 
   useEffect(() => {
-    fetchProjects()
-  }, [fetchProjects])
+    fetchProjects();
+  }, [fetchProjects]);
 
-  const projectsWithConversations = useMemo(() => 
-    projects.filter(project => project.conversationCount > 0),
+  const projectsWithConversations = useMemo(
+    () =>
+      projects
+        .filter((project) => project.conversationCount > 0)
+        .sort((a, b) => {
+          const aLatest = a.conversations[0]?.lastUpdatedAt ?? 0;
+          const bLatest = b.conversations[0]?.lastUpdatedAt ?? 0;
+          return bLatest - aLatest;
+        }),
     [projects]
-  )
+  );
 
   if (isLoading && projects.length === 0) {
-    return <Loading message="Loading projects..." />
+    return <Loading message="Loading projects..." />;
   }
 
   if (projects.length === 0) {
@@ -159,18 +206,14 @@ export const WorkspaceList = memo(function WorkspaceList() {
       <div className="pt-4 min-h-[calc(100vh-150px)] flex items-center justify-center">
         <EmptyState />
       </div>
-    )
+    );
   }
 
   return (
-    <div className="space-y-2 pt-4 min-h-[calc(100vh-150px)]">
-      {projectsWithConversations.length > 0 && (
-        <div className="space-y-2">
-          {projectsWithConversations.map(project => (
-            <WorkspaceRow key={project.id} project={project} />
-          ))}
-        </div>
-      )}
+    <div className="space-y-3 pt-4 min-h-[calc(100vh-150px)]">
+      {projectsWithConversations.map((project) => (
+        <WorkspaceCard key={project.id} project={project} />
+      ))}
     </div>
-  )
-})
+  );
+});
