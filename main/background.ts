@@ -24,6 +24,9 @@ import {
   getUsageByModel,
   getUsageByDay,
   listUsageRecords,
+  saveLearnings,
+  getLearnings,
+  deleteLearnings,
   type UsageFeature,
 } from './services/agent-storage'
 import { generateAssistantMessage, generateAssistantMessageStreaming, generateChatTitle, prepareChatContext } from './services/agent-runtime'
@@ -596,3 +599,34 @@ ipcMain.handle('todos:dates', () => {
 ipcMain.handle('todos:search', (_event, query: string) => {
   return searchTodos(query)
 })
+
+ipcMain.handle(
+  'learnings:save',
+  (
+    _event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      exercises: unknown[]
+      attempts: Record<string, unknown>
+      modelUsed: string
+      metadata?: unknown
+    }
+  ) => {
+    return saveLearnings(payload)
+  }
+)
+
+ipcMain.handle(
+  'learnings:get',
+  (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getLearnings(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle(
+  'learnings:delete',
+  (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return deleteLearnings(payload.workspaceId, payload.conversationId)
+  }
+)

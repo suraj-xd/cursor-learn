@@ -205,6 +205,22 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_todos_updated ON todos(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS conversation_learnings (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  exercises TEXT NOT NULL,
+  attempts TEXT NOT NULL,
+  model_used TEXT NOT NULL,
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, conversation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_learnings_lookup
+ON conversation_learnings (workspace_id, conversation_id);
 `
 
 export function initAgentDatabase(dbFileName = 'agents.db'): BetterSqliteDatabase {

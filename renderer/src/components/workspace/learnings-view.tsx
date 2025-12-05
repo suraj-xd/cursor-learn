@@ -17,19 +17,13 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
-import Editor from "react-simple-code-editor"
-import Prism from "prismjs"
-import "prismjs/components/prism-javascript"
-import "prismjs/components/prism-typescript"
-import "prismjs/components/prism-jsx"
-import "prismjs/components/prism-tsx"
-import "prismjs/components/prism-css"
-import "prismjs/components/prism-json"
-import "prismjs/components/prism-yaml"
-import "prismjs/components/prism-bash"
-import "prismjs/components/prism-python"
-import "prismjs/components/prism-markdown"
-import "prismjs/themes/prism-tomorrow.css"
+import CodeMirror from "@uiw/react-codemirror"
+import { javascript } from "@codemirror/lang-javascript"
+import { python } from "@codemirror/lang-python"
+import { json } from "@codemirror/lang-json"
+import { css } from "@codemirror/lang-css"
+import { markdown } from "@codemirror/lang-markdown"
+import { yaml } from "@codemirror/lang-yaml"
 import { useLearningsStore, learningsActions } from "@/store/learnings"
 import { useSettingsStore } from "@/store/settings"
 import { getCodeThemeStyle } from "@/lib/code-themes"
@@ -140,18 +134,31 @@ export function LearningsView({
   }, [])
 
   useEffect(() => {
-    if (!autoRunLearnings) return
-    if (hasApiKey && !initialized && exercises.length === 0 && contextText.length > 0) {
-      setInitialized(true)
-      learningsActions.generateForConversation(
-        contextText,
-        conversationTitle,
-        selectedProvider,
-        selectedModel,
-        { workspaceId, conversationId }
-      )
+    if (!workspaceId || !conversationId) return
+
+    const loadOrGenerate = async () => {
+      const hasCached = await learningsActions.loadCached(workspaceId, conversationId)
+      if (hasCached) {
+        setInitialized(true)
+        return
+      }
+
+      if (autoRunLearnings && hasApiKey && contextText.length > 0) {
+        setInitialized(true)
+        learningsActions.generateForConversation(
+          contextText,
+          conversationTitle,
+          selectedProvider,
+          selectedModel,
+          { workspaceId, conversationId }
+        )
+      }
     }
-  }, [autoRunLearnings, hasApiKey, initialized, exercises.length, contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId])
+
+    if (!initialized) {
+      loadOrGenerate()
+    }
+  }, [autoRunLearnings, hasApiKey, initialized, contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId])
 
   const handleAddMore = useCallback(() => {
     learningsActions.addMoreExercises(
@@ -402,40 +409,35 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
     children: string
   }>
 
-  const getLangGrammar = (lang: string): Prism.Grammar => {
+  const getLanguageExtension = (lang: string) => {
     const langKey = lang.toLowerCase()
-    const map: Record<string, string> = {
-      javascript: "javascript",
-      js: "javascript",
-      typescript: "typescript",
-      ts: "typescript",
-      jsx: "jsx",
-      tsx: "tsx",
-      css: "css",
-      json: "json",
-      yaml: "yaml",
-      yml: "yaml",
-      bash: "bash",
-      shell: "bash",
-      sh: "bash",
-      python: "python",
-      py: "python",
-      markdown: "markdown",
-      md: "markdown",
+    switch (langKey) {
+      case "javascript":
+      case "js":
+        return javascript()
+      case "typescript":
+      case "ts":
+        return javascript({ typescript: true })
+      case "jsx":
+        return javascript({ jsx: true })
+      case "tsx":
+        return javascript({ jsx: true, typescript: true })
+      case "python":
+      case "py":
+        return python()
+      case "json":
+        return json()
+      case "css":
+        return css()
+      case "markdown":
+      case "md":
+        return markdown()
+      case "yaml":
+      case "yml":
+        return yaml()
+      default:
+        return javascript()
     }
-    const resolved = map[langKey] || "javascript"
-    return Prism.languages[resolved] || Prism.languages.javascript
-  }
-
-  const highlightWithLineNumbers = (code: string) => {
-    const grammar = getLangGrammar(exercise.language)
-    const langKey = exercise.language.toLowerCase()
-    const resolvedLang = langKey === "js" ? "javascript" : langKey === "ts" ? "typescript" : langKey === "py" ? "python" : langKey === "sh" ? "bash" : langKey === "yml" ? "yaml" : langKey === "md" ? "markdown" : langKey
-    
-    return Prism.highlight(code, grammar, resolvedLang)
-      .split("\n")
-      .map((line, i) => `<span class="editor-line-number">${i + 1}</span>${line}`)
-      .join("\n")
   }
 
   const handleVerify = () => {
@@ -481,33 +483,23 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
               </span>
             )}
           </div>
-          <div className="rounded-md border bg-[#1d1f21] overflow-hidden">
-            <style>{`
-              .editor-line-number {
-                display: inline-block;
-                width: 2.5em;
-                text-align: right;
-                padding-right: 1em;
-                margin-right: 0.5em;
-                color: #636d83;
-                user-select: none;
-                pointer-events: none;
-              }
-            `}</style>
-            <Editor
+          <div className="rounded-md border overflow-hidden">
+            <CodeMirror
               value={userCode}
-              onValueChange={setUserCode}
-              highlight={highlightWithLineNumbers}
-              padding={12}
-              disabled={attempt?.status === "correct"}
-              className="font-mono text-xs min-h-[120px] focus-within:ring-2 focus-within:ring-primary/50"
-              style={{
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                fontSize: "0.75rem",
-                lineHeight: 1.6,
-                background: "transparent",
+              onChange={setUserCode}
+              extensions={[getLanguageExtension(exercise.language)]}
+              editable={attempt?.status !== "correct"}
+              theme="dark"
+              basicSetup={{
+                lineNumbers: true,
+                highlightActiveLineGutter: true,
+                highlightActiveLine: true,
+                foldGutter: false,
               }}
-              textareaClassName="focus:outline-none"
+              className="text-xs min-h-[120px] [&_.cm-editor]:!outline-none [&_.cm-focused]:ring-2 [&_.cm-focused]:ring-primary/50"
+              style={{
+                fontSize: "0.75rem",
+              }}
             />
           </div>
         </div>

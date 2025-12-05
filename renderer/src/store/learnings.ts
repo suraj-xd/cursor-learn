@@ -17,10 +17,14 @@ import {
   checkMcqAnswer,
   checkTfAnswer,
 } from "@/lib/agents/learnings"
+import { learningsIpc } from "@/lib/agents/learnings-ipc"
 import type { ProviderId } from "@/lib/ai/config"
 
 type LearningsStore = LearningsState & {
+  currentWorkspaceId: string | null
+  currentConversationId: string | null
   setActiveTab: (tab: ExerciseType) => void
+  loadCached: (workspaceId: string, conversationId: string) => Promise<boolean>
   generateForConversation: (
     chatContext: string,
     conversationTitle: string,
@@ -34,7 +38,7 @@ type LearningsStore = LearningsState & {
     conversationTitle: string,
     provider: ProviderId,
     modelId: string,
-    opts?: { workspaceId?: string; conversationId?: string },
+    opts: { workspaceId?: string; conversationId?: string } | undefined,
     type: ExerciseType,
     count?: number
   ) => Promise<void>
@@ -59,6 +63,27 @@ const DEFAULT_COUNTS = {
   tf: 2,
 }
 
+const saveToCache = async (
+  workspaceId: string | null,
+  conversationId: string | null,
+  exercises: Exercise[],
+  attempts: Record<string, ExerciseAttempt>,
+  modelUsed: string
+) => {
+  if (!workspaceId || !conversationId || exercises.length === 0) return
+  try {
+    await learningsIpc.save({
+      workspaceId,
+      conversationId,
+      exercises,
+      attempts,
+      modelUsed,
+    })
+  } catch {
+    // silent fail for cache
+  }
+}
+
 export const useLearningsStore = create<LearningsStore>((set, get) => ({
   exercises: [],
   attempts: {},
@@ -68,8 +93,49 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
   generationError: null,
   evaluationError: null,
   activeTab: "interactive",
+  currentWorkspaceId: null,
+  currentConversationId: null,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  loadCached: async (workspaceId, conversationId) => {
+    const state = get()
+    if (
+      state.currentWorkspaceId === workspaceId &&
+      state.currentConversationId === conversationId &&
+      state.exercises.length > 0
+    ) {
+      return true
+    }
+
+    if (
+      state.currentWorkspaceId !== workspaceId ||
+      state.currentConversationId !== conversationId
+    ) {
+      set({
+        exercises: [],
+        attempts: {},
+        currentWorkspaceId: workspaceId,
+        currentConversationId: conversationId,
+      })
+    }
+
+    try {
+      const cached = await learningsIpc.get(workspaceId, conversationId)
+      if (cached && cached.exercises.length > 0) {
+        set({
+          exercises: cached.exercises as Exercise[],
+          attempts: cached.attempts as Record<string, ExerciseAttempt>,
+          currentWorkspaceId: workspaceId,
+          currentConversationId: conversationId,
+        })
+        return true
+      }
+    } catch {
+      // no cache found
+    }
+    return false
+  },
 
   generateForConversation: async (chatContext, conversationTitle, provider, modelId, opts, type) => {
     const state = get()
@@ -98,17 +164,28 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
         return !existingHashes.includes(newHash)
       })
 
-      set((s) => ({
-        exercises: type ? s.exercises : [...s.exercises, ...newExercises],
+      let updatedExercises: Exercise[]
+      if (type) {
+        updatedExercises = [...state.exercises, ...newExercises.filter((ex) => ex.type === type)]
+      } else {
+        updatedExercises = [...state.exercises, ...newExercises]
+      }
+
+      set({
+        exercises: updatedExercises,
         contextSummaryId: response.contextSummaryId,
         isGenerating: false,
-      }))
+        currentWorkspaceId: opts?.workspaceId ?? null,
+        currentConversationId: opts?.conversationId ?? null,
+      })
 
-      if (type) {
-        set((s) => ({
-          exercises: [...s.exercises, ...newExercises.filter((ex) => ex.type === type)],
-        }))
-      }
+      saveToCache(
+        opts?.workspaceId ?? null,
+        opts?.conversationId ?? null,
+        updatedExercises,
+        get().attempts,
+        modelId
+      )
     } catch (error) {
       set({
         isGenerating: false,
@@ -154,10 +231,19 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
         return
       }
 
-      set((s) => ({
-        exercises: [...s.exercises, ...newExercises],
+      const updatedExercises = [...state.exercises, ...newExercises]
+      set({
+        exercises: updatedExercises,
         isGenerating: false,
-      }))
+      })
+
+      saveToCache(
+        opts?.workspaceId ?? null,
+        opts?.conversationId ?? null,
+        updatedExercises,
+        get().attempts,
+        modelId
+      )
     } catch (error) {
       set({
         isGenerating: false,
@@ -199,10 +285,19 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
         lastAttemptAt: Date.now(),
       }
 
-      set((s) => ({
-        attempts: { ...s.attempts, [exercise.id]: newAttempt },
+      const updatedAttempts = { ...state.attempts, [exercise.id]: newAttempt }
+      set({
+        attempts: updatedAttempts,
         isEvaluating: false,
-      }))
+      })
+
+      saveToCache(
+        opts?.workspaceId ?? state.currentWorkspaceId,
+        opts?.conversationId ?? state.currentConversationId,
+        state.exercises,
+        updatedAttempts,
+        modelId
+      )
     } catch (error) {
       set({
         isEvaluating: false,
@@ -228,9 +323,16 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
       lastAttemptAt: Date.now(),
     }
 
-    set((s) => ({
-      attempts: { ...s.attempts, [exerciseId]: newAttempt },
-    }))
+    const updatedAttempts = { ...state.attempts, [exerciseId]: newAttempt }
+    set({ attempts: updatedAttempts })
+
+    saveToCache(
+      state.currentWorkspaceId,
+      state.currentConversationId,
+      state.exercises,
+      updatedAttempts,
+      "cached"
+    )
   },
 
   submitTfAnswer: (exerciseId, userAnswer) => {
@@ -250,19 +352,34 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
       lastAttemptAt: Date.now(),
     }
 
-    set((s) => ({
-      attempts: { ...s.attempts, [exerciseId]: newAttempt },
-    }))
+    const updatedAttempts = { ...state.attempts, [exerciseId]: newAttempt }
+    set({ attempts: updatedAttempts })
+
+    saveToCache(
+      state.currentWorkspaceId,
+      state.currentConversationId,
+      state.exercises,
+      updatedAttempts,
+      "cached"
+    )
   },
 
   resetAttempt: (exerciseId) => {
-    set((s) => {
-      const { [exerciseId]: _, ...rest } = s.attempts
-      return { attempts: rest }
-    })
+    const state = get()
+    const { [exerciseId]: _, ...rest } = state.attempts
+    set({ attempts: rest })
+
+    saveToCache(
+      state.currentWorkspaceId,
+      state.currentConversationId,
+      state.exercises,
+      rest,
+      "cached"
+    )
   },
 
   clearExercises: () => {
+    const state = get()
     set({
       exercises: [],
       attempts: {},
@@ -270,6 +387,10 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
       generationError: null,
       evaluationError: null,
     })
+
+    if (state.currentWorkspaceId && state.currentConversationId) {
+      learningsIpc.delete(state.currentWorkspaceId, state.currentConversationId).catch(() => {})
+    }
   },
 
   getExercisesByType: (type) => {
@@ -283,6 +404,7 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
 
 export const learningsActions = {
   setActiveTab: useLearningsStore.getState().setActiveTab,
+  loadCached: useLearningsStore.getState().loadCached,
   generateForConversation: useLearningsStore.getState().generateForConversation,
   addMoreExercises: useLearningsStore.getState().addMoreExercises,
   evaluateInteractive: useLearningsStore.getState().evaluateInteractive,

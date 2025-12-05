@@ -1417,3 +1417,114 @@ export const deleteOverviewSession = (id: string): void => {
   )
   stmt.run(id)
 }
+
+export type LearningsRecord = {
+  id: string
+  workspaceId: string
+  conversationId: string
+  exercises: unknown[]
+  attempts: Record<string, unknown>
+  modelUsed: string
+  metadata: unknown
+  createdAt: number
+  updatedAt: number
+}
+
+export const saveLearnings = ({
+  id = randomUUID(),
+  workspaceId,
+  conversationId,
+  exercises,
+  attempts,
+  modelUsed,
+  metadata,
+}: {
+  id?: string
+  workspaceId: string
+  conversationId: string
+  exercises: unknown[]
+  attempts: Record<string, unknown>
+  modelUsed: string
+  metadata?: unknown
+}): LearningsRecord => {
+  const now = TIMESTAMP()
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO conversation_learnings (
+         id, workspace_id, conversation_id, exercises, attempts,
+         model_used, metadata, created_at, updated_at
+       ) VALUES (
+         @id, @workspaceId, @conversationId, @exercises, @attempts,
+         @modelUsed, @metadata, @createdAt, @updatedAt
+       )
+       ON CONFLICT(workspace_id, conversation_id) DO UPDATE SET
+         exercises = excluded.exercises,
+         attempts = excluded.attempts,
+         model_used = excluded.model_used,
+         metadata = excluded.metadata,
+         updated_at = excluded.updated_at
+       RETURNING
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         exercises, attempts, model_used as modelUsed, metadata,
+         created_at as createdAt, updated_at as updatedAt`
+    )
+  )
+
+  const result = stmt.get({
+    id,
+    workspaceId,
+    conversationId,
+    exercises: serialize(exercises),
+    attempts: serialize(attempts),
+    modelUsed,
+    metadata: serialize(metadata),
+    createdAt: now,
+    updatedAt: now,
+  }) as LearningsRecord & { exercises: string; attempts: string; metadata: string }
+
+  return {
+    ...result,
+    exercises: deserialize<unknown[]>(result.exercises) ?? [],
+    attempts: deserialize<Record<string, unknown>>(result.attempts) ?? {},
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const getLearnings = (
+  workspaceId: string,
+  conversationId: string
+): LearningsRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         exercises, attempts, model_used as modelUsed, metadata,
+         created_at as createdAt, updated_at as updatedAt
+       FROM conversation_learnings
+       WHERE workspace_id = ? AND conversation_id = ?`
+    )
+  )
+
+  const result = stmt.get(workspaceId, conversationId) as
+    | (LearningsRecord & { exercises: string; attempts: string; metadata: string })
+    | undefined
+
+  if (!result) return null
+
+  return {
+    ...result,
+    exercises: deserialize<unknown[]>(result.exercises) ?? [],
+    attempts: deserialize<Record<string, unknown>>(result.attempts) ?? {},
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const deleteLearnings = (workspaceId: string, conversationId: string): boolean => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `DELETE FROM conversation_learnings WHERE workspace_id = ? AND conversation_id = ?`
+    )
+  )
+  const result = stmt.run(workspaceId, conversationId)
+  return result.changes > 0
+}

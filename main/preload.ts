@@ -22,6 +22,7 @@ import type {
   UsageByModel,
   UsageByDay,
   UsageFeature,
+  LearningsRecord,
 } from './services/agent-storage'
 import type { ChatContext } from './services/agent-runtime'
 import type { NoteRecord } from './services/notes-storage'
@@ -315,6 +316,21 @@ const api = {
       ipcRenderer.invoke('todos:dates') as Promise<string[]>,
     search: (query: string) =>
       ipcRenderer.invoke('todos:search', query) as Promise<TodoRecord[]>,
+  },
+  learnings: {
+    save: (payload: {
+      workspaceId: string
+      conversationId: string
+      exercises: unknown[]
+      attempts: Record<string, unknown>
+      modelUsed: string
+      metadata?: unknown
+    }) =>
+      ipcRenderer.invoke('learnings:save', payload) as Promise<LearningsRecord>,
+    get: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('learnings:get', payload) as Promise<LearningsRecord | null>,
+    delete: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('learnings:delete', payload) as Promise<boolean>,
   },
 }
 
