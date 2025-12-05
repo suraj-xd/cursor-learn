@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings2, StickyNote, Code2 } from "lucide-react";
+import { Settings2, StickyNote, Code2, CheckSquare } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ export function Navbar() {
     if (pathname.startsWith("/settings")) return null;
     if (pathname.startsWith("/notes")) return null;
     if (pathname.startsWith("/snippets")) return null;
+    if (pathname.startsWith("/todos")) return null;
     return "workspace";
   };
 
@@ -28,6 +29,7 @@ export function Navbar() {
 
   const isNotesActive = pathname.startsWith("/notes");
   const isSnippetsActive = pathname.startsWith("/snippets");
+  const isTodosActive = pathname.startsWith("/todos");
   const isSettingsActive = pathname.startsWith("/settings");
 
   return (
@@ -60,6 +62,23 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-1 z-[1] relative top-0.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "text-xs px-4 py-0 rounded-[8px] rounded-b-none hover:bg-muted/80 transition-colors",
+              isTodosActive
+                ? "border border-border border-b-0 bg-muted"
+                : ""
+            )}
+            asChild
+          >
+            <Link href="/todos">
+              <CheckSquare className="w-2 h-2" />
+              Todos
+              <span className="sr-only">Todos</span>
+            </Link>
+          </Button>
           <Button
             variant="ghost"
             size="sm"

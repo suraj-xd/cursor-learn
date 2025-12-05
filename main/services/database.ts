@@ -158,6 +158,53 @@ CREATE TABLE IF NOT EXISTS snippets (
 CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
 CREATE INDEX IF NOT EXISTS idx_snippets_updated ON snippets(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snippets_pinned ON snippets(is_pinned DESC, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS conversation_overviews (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  topics TEXT NOT NULL,
+  agendas TEXT NOT NULL,
+  key_insights TEXT NOT NULL,
+  model_used TEXT NOT NULL,
+  status TEXT DEFAULT 'completed',
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, conversation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_overviews_lookup
+ON conversation_overviews (workspace_id, conversation_id);
+
+CREATE TABLE IF NOT EXISTS overview_sessions (
+  id TEXT PRIMARY KEY,
+  overview_id TEXT,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  progress INTEGER DEFAULT 0,
+  current_step TEXT,
+  error TEXT,
+  started_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  FOREIGN KEY (overview_id) REFERENCES conversation_overviews(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_overview_sessions_status
+ON overview_sessions (status);
+
+CREATE TABLE IF NOT EXISTS todos (
+  date TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  plain_text TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_todos_updated ON todos(updated_at DESC);
 `
 
 export function initAgentDatabase(dbFileName = 'agents.db'): BetterSqliteDatabase {

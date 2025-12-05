@@ -17,6 +17,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useWorkspaceDetailStore, selectSelectedChat, workspaceDetailActions } from '@/store/workspace'
 import { ChatView } from '@/components/workspace/chat-view'
 import { CompactedChatView } from '@/components/workspace/compacted-chat-view'
+import { OverviewView } from '@/components/workspace/overview-view'
 import { cn } from '@/lib/utils'
 
 type ContentTab = 'overview' | 'learnings' | 'sources' | 'compacted' | 'raw'
@@ -249,7 +250,16 @@ function WorkspaceClientInner() {
               <div className="h-full flex flex-col">
                 <ChatContentTabs activeTab={activeContentTab} onTabChange={setActiveContentTab} />
                 <div className="flex-1 overflow-hidden">
-                  {activeContentTab === 'compacted' ? (
+                  {activeContentTab === 'overview' ? (
+                    <Suspense fallback={<ChatViewSkeleton />}>
+                      <OverviewView
+                        workspaceId={workspaceId ?? ''}
+                        conversationId={selectedChat.id}
+                        conversationTitle={selectedChat.title}
+                        bubbles={selectedChat.bubbles}
+                      />
+                    </Suspense>
+                  ) : activeContentTab === 'compacted' ? (
                     <Suspense fallback={<ChatViewSkeleton />}>
                       <CompactedChatView
                         workspaceId={workspaceId ?? ''}

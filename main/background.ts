@@ -37,6 +37,15 @@ import {
   type ConversationInput,
 } from './services/compact-agent'
 import {
+  startOverviewSession,
+  cancelOverviewSession,
+  getOverviewForConversation,
+  getSessionStatus as getOverviewSessionStatus,
+  getActiveSession as getActiveOverviewSession,
+  checkApiKeyAvailable,
+  type ConversationInput as OverviewConversationInput,
+} from './services/overview-agent'
+import {
   listWorkspaces,
   getWorkspaceDetails,
   getWorkspaceTabs,
@@ -77,6 +86,15 @@ import {
   getAllSnippetLabels,
   migrateFromLocalStorage,
 } from './services/snippets-storage'
+import {
+  listTodos,
+  getTodo,
+  upsertTodo,
+  deleteTodo,
+  getTodosCount,
+  getDatesWithTodos,
+  searchTodos,
+} from './services/todos-storage'
 
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -486,4 +504,95 @@ ipcMain.handle('snippets:labels', () => {
 
 ipcMain.handle('snippets:migrate', (_event, snippets: Array<{ id: string; code: string; language: string; createdAt: string }>) => {
   return migrateFromLocalStorage(snippets)
+})
+
+ipcMain.handle(
+  'overview:start',
+  async (
+    event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+    }
+  ) => {
+    const webContents = event.sender
+    const conversation: OverviewConversationInput = {
+      workspaceId: payload.workspaceId,
+      conversationId: payload.conversationId,
+      title: payload.title,
+      bubbles: payload.bubbles,
+    }
+
+    const result = await startOverviewSession(conversation, (session) => {
+      webContents.send('overview:progress', {
+        sessionId: session.id,
+        workspaceId: payload.workspaceId,
+        conversationId: payload.conversationId,
+        status: session.status,
+        progress: session.progress,
+        currentStep: session.currentStep,
+      })
+    })
+
+    return {
+      session: result.session,
+      overview: result.overview,
+    }
+  }
+)
+
+ipcMain.handle('overview:cancel', async (_event, sessionId: string) => {
+  return await cancelOverviewSession(sessionId)
+})
+
+ipcMain.handle(
+  'overview:get',
+  async (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getOverviewForConversation(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle('overview:session:status', async (_event, sessionId: string) => {
+  return getOverviewSessionStatus(sessionId)
+})
+
+ipcMain.handle(
+  'overview:session:active',
+  async (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getActiveOverviewSession(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle('overview:hasApiKey', async () => {
+  return checkApiKeyAvailable()
+})
+
+ipcMain.handle('todos:list', (_event, options?: { limit?: number; offset?: number; search?: string }) => {
+  return listTodos(options)
+})
+
+ipcMain.handle('todos:get', (_event, date: string) => {
+  return getTodo(date)
+})
+
+ipcMain.handle('todos:upsert', (_event, payload: { date: string; content: string; plainText: string }) => {
+  return upsertTodo(payload)
+})
+
+ipcMain.handle('todos:delete', (_event, date: string) => {
+  return deleteTodo(date)
+})
+
+ipcMain.handle('todos:count', () => {
+  return getTodosCount()
+})
+
+ipcMain.handle('todos:dates', () => {
+  return getDatesWithTodos()
+})
+
+ipcMain.handle('todos:search', (_event, query: string) => {
+  return searchTodos(query)
 })

@@ -1131,3 +1131,289 @@ export const listUsageRecords = ({
     metadata: deserialize(row.metadata),
   }))
 }
+
+export type OverviewStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+export type OverviewStep = 'analyzing' | 'extracting' | 'generating' | 'finalizing'
+
+export type ConversationOverviewRecord = {
+  id: string
+  workspaceId: string
+  conversationId: string
+  title: string
+  summary: string
+  topics: string[]
+  content: string
+  modelUsed: string
+  status: string
+  metadata: unknown
+  createdAt: number
+  updatedAt: number
+}
+
+export type OverviewSessionRecord = {
+  id: string
+  overviewId: string | null
+  workspaceId: string
+  conversationId: string
+  status: OverviewStatus
+  progress: number
+  currentStep: OverviewStep | null
+  error: string | null
+  startedAt: number
+  completedAt: number | null
+}
+
+export const createConversationOverview = ({
+  id = randomUUID(),
+  workspaceId,
+  conversationId,
+  title,
+  summary,
+  topics,
+  content,
+  modelUsed,
+  status = 'completed',
+  metadata,
+}: {
+  id?: string
+  workspaceId: string
+  conversationId: string
+  title: string
+  summary: string
+  topics: string[]
+  content: string
+  modelUsed: string
+  status?: string
+  metadata?: unknown
+}): ConversationOverviewRecord => {
+  const now = TIMESTAMP()
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO conversation_overviews (
+         id, workspace_id, conversation_id, title, description,
+         topics, agendas, key_insights, model_used, status, metadata, created_at, updated_at
+       ) VALUES (
+         @id, @workspaceId, @conversationId, @title, @summary,
+         @topics, @content, '[]', @modelUsed, @status, @metadata, @createdAt, @updatedAt
+       )
+       ON CONFLICT(workspace_id, conversation_id) DO UPDATE SET
+         title = excluded.title,
+         description = excluded.description,
+         topics = excluded.topics,
+         agendas = excluded.agendas,
+         model_used = excluded.model_used,
+         status = excluded.status,
+         metadata = excluded.metadata,
+         updated_at = excluded.updated_at
+       RETURNING
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         title, description as summary, topics, agendas as content,
+         model_used as modelUsed, status, metadata, created_at as createdAt, updated_at as updatedAt`
+    )
+  )
+
+  const result = stmt.get({
+    id,
+    workspaceId,
+    conversationId,
+    title,
+    summary,
+    topics: serialize(topics),
+    content,
+    modelUsed,
+    status,
+    metadata: serialize(metadata),
+    createdAt: now,
+    updatedAt: now,
+  }) as ConversationOverviewRecord & { topics: string; metadata: string }
+
+  return {
+    ...result,
+    topics: deserialize<string[]>(result.topics) ?? [],
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const getConversationOverview = (id: string): ConversationOverviewRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, workspace_id as workspaceId, conversation_id as conversationId,
+              title, description as summary, topics, agendas as content,
+              model_used as modelUsed, status, metadata, created_at as createdAt, updated_at as updatedAt
+       FROM conversation_overviews WHERE id = ?`
+    )
+  )
+
+  const result = stmt.get(id) as (ConversationOverviewRecord & { topics: string; metadata: string }) | undefined
+  if (!result) return null
+
+  return {
+    ...result,
+    topics: deserialize<string[]>(result.topics) ?? [],
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const getOverviewByConversation = (
+  workspaceId: string,
+  conversationId: string
+): ConversationOverviewRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, workspace_id as workspaceId, conversation_id as conversationId,
+              title, description as summary, topics, agendas as content,
+              model_used as modelUsed, status, metadata, created_at as createdAt, updated_at as updatedAt
+       FROM conversation_overviews WHERE workspace_id = ? AND conversation_id = ?`
+    )
+  )
+
+  const result = stmt.get(workspaceId, conversationId) as (ConversationOverviewRecord & { topics: string; metadata: string }) | undefined
+  if (!result) return null
+
+  return {
+    ...result,
+    topics: deserialize<string[]>(result.topics) ?? [],
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const deleteConversationOverview = (id: string): void => {
+  const stmt = dbStatement((database) =>
+    database.prepare(`DELETE FROM conversation_overviews WHERE id = ?`)
+  )
+  stmt.run(id)
+}
+
+export const createOverviewSession = ({
+  id = randomUUID(),
+  workspaceId,
+  conversationId,
+  status = 'pending',
+}: {
+  id?: string
+  workspaceId: string
+  conversationId: string
+  status?: OverviewStatus
+}): OverviewSessionRecord => {
+  const now = TIMESTAMP()
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO overview_sessions (
+         id, overview_id, workspace_id, conversation_id, status,
+         progress, current_step, error, started_at, completed_at
+       ) VALUES (
+         @id, NULL, @workspaceId, @conversationId, @status,
+         0, NULL, NULL, @startedAt, NULL
+       )
+       RETURNING
+         id, overview_id as overviewId, workspace_id as workspaceId,
+         conversation_id as conversationId, status, progress, current_step as currentStep,
+         error, started_at as startedAt, completed_at as completedAt`
+    )
+  )
+
+  return stmt.get({
+    id,
+    workspaceId,
+    conversationId,
+    status,
+    startedAt: now,
+  }) as OverviewSessionRecord
+}
+
+export const getOverviewSession = (id: string): OverviewSessionRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, overview_id as overviewId, workspace_id as workspaceId,
+              conversation_id as conversationId, status, progress, current_step as currentStep,
+              error, started_at as startedAt, completed_at as completedAt
+       FROM overview_sessions WHERE id = ?`
+    )
+  )
+
+  return (stmt.get(id) as OverviewSessionRecord | undefined) ?? null
+}
+
+export const getActiveOverviewSession = (
+  workspaceId: string,
+  conversationId: string
+): OverviewSessionRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT id, overview_id as overviewId, workspace_id as workspaceId,
+              conversation_id as conversationId, status, progress, current_step as currentStep,
+              error, started_at as startedAt, completed_at as completedAt
+       FROM overview_sessions
+       WHERE workspace_id = ? AND conversation_id = ? AND status IN ('pending', 'processing')
+       ORDER BY started_at DESC LIMIT 1`
+    )
+  )
+
+  return (stmt.get(workspaceId, conversationId) as OverviewSessionRecord | undefined) ?? null
+}
+
+export const updateOverviewSession = ({
+  id,
+  status,
+  progress,
+  currentStep,
+  overviewId,
+  error,
+}: {
+  id: string
+  status?: OverviewStatus
+  progress?: number
+  currentStep?: OverviewStep | null
+  overviewId?: string | null
+  error?: string | null
+}): OverviewSessionRecord | null => {
+  const updates: string[] = []
+  const params: Record<string, unknown> = { id }
+
+  if (status !== undefined) {
+    updates.push('status = @status')
+    params.status = status
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      updates.push('completed_at = @completedAt')
+      params.completedAt = TIMESTAMP()
+    }
+  }
+  if (progress !== undefined) {
+    updates.push('progress = @progress')
+    params.progress = progress
+  }
+  if (currentStep !== undefined) {
+    updates.push('current_step = @currentStep')
+    params.currentStep = currentStep
+  }
+  if (overviewId !== undefined) {
+    updates.push('overview_id = @overviewId')
+    params.overviewId = overviewId
+  }
+  if (error !== undefined) {
+    updates.push('error = @error')
+    params.error = error
+  }
+
+  if (updates.length === 0) return getOverviewSession(id)
+
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `UPDATE overview_sessions SET ${updates.join(', ')}
+       WHERE id = @id
+       RETURNING
+         id, overview_id as overviewId, workspace_id as workspaceId,
+         conversation_id as conversationId, status, progress, current_step as currentStep,
+         error, started_at as startedAt, completed_at as completedAt`
+    )
+  )
+
+  return (stmt.get(params) as OverviewSessionRecord | undefined) ?? null
+}
+
+export const deleteOverviewSession = (id: string): void => {
+  const stmt = dbStatement((database) =>
+    database.prepare(`DELETE FROM overview_sessions WHERE id = ?`)
+  )
+  stmt.run(id)
+}

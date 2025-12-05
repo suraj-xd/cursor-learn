@@ -16,6 +16,8 @@ type SettingsState = {
   preferredModels: PreferredModels
   setPreferredModel: (role: ModelRole, modelId: string) => void
   getPreferredModel: (role: ModelRole) => string | undefined
+  autoRunOverview: boolean
+  setAutoRunOverview: (enabled: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -29,6 +31,8 @@ export const useSettingsStore = create<SettingsState>()(
           preferredModels: { ...state.preferredModels, [role]: modelId },
         })),
       getPreferredModel: (role) => get().preferredModels[role],
+      autoRunOverview: false,
+      setAutoRunOverview: (enabled) => set({ autoRunOverview: enabled }),
     }),
     {
       name: "app-settings",

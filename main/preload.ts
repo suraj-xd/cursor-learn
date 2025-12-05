@@ -14,6 +14,8 @@ import type {
   ChatMentionRecord,
   CompactedChatRecord,
   CompactSessionRecord,
+  ConversationOverviewRecord,
+  OverviewSessionRecord,
   UsageRecord,
   UsageStats,
   UsageByProvider,
@@ -24,6 +26,7 @@ import type {
 import type { ChatContext } from './services/agent-runtime'
 import type { NoteRecord } from './services/notes-storage'
 import type { SnippetRecord } from './services/snippets-storage'
+import type { TodoRecord } from './services/todos-storage'
 
 type SearchType = 'all' | 'chat' | 'composer'
 
@@ -251,6 +254,67 @@ const api = {
       ipcRenderer.invoke('snippets:labels') as Promise<string[]>,
     migrate: (snippets: Array<{ id: string; code: string; language: string; createdAt: string }>) =>
       ipcRenderer.invoke('snippets:migrate', snippets) as Promise<number>,
+  },
+  overview: {
+    start: (payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+    }) =>
+      ipcRenderer.invoke('overview:start', payload) as Promise<{
+        session: OverviewSessionRecord
+        overview: ConversationOverviewRecord
+      }>,
+    cancel: (sessionId: string) =>
+      ipcRenderer.invoke('overview:cancel', sessionId) as Promise<OverviewSessionRecord | null>,
+    get: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('overview:get', payload) as Promise<ConversationOverviewRecord | null>,
+    getSessionStatus: (sessionId: string) =>
+      ipcRenderer.invoke('overview:session:status', sessionId) as Promise<OverviewSessionRecord | null>,
+    getActiveSession: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('overview:session:active', payload) as Promise<OverviewSessionRecord | null>,
+    onProgress: (
+      callback: (data: {
+        sessionId: string
+        workspaceId: string
+        conversationId: string
+        status: string
+        progress: number
+        currentStep: string | null
+      }) => void
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          sessionId: string
+          workspaceId: string
+          conversationId: string
+          status: string
+          progress: number
+          currentStep: string | null
+        }
+      ) => callback(data)
+      ipcRenderer.on('overview:progress', handler)
+      return () => ipcRenderer.removeListener('overview:progress', handler)
+    },
+    hasApiKey: () => ipcRenderer.invoke('overview:hasApiKey') as Promise<boolean>,
+  },
+  todos: {
+    list: (options?: { limit?: number; offset?: number; search?: string }) =>
+      ipcRenderer.invoke('todos:list', options) as Promise<TodoRecord[]>,
+    get: (date: string) =>
+      ipcRenderer.invoke('todos:get', date) as Promise<TodoRecord | null>,
+    upsert: (payload: { date: string; content: string; plainText: string }) =>
+      ipcRenderer.invoke('todos:upsert', payload) as Promise<TodoRecord>,
+    delete: (date: string) =>
+      ipcRenderer.invoke('todos:delete', date) as Promise<boolean>,
+    count: () =>
+      ipcRenderer.invoke('todos:count') as Promise<number>,
+    dates: () =>
+      ipcRenderer.invoke('todos:dates') as Promise<string[]>,
+    search: (query: string) =>
+      ipcRenderer.invoke('todos:search', query) as Promise<TodoRecord[]>,
   },
 }
 
