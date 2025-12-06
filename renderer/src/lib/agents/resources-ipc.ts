@@ -1,66 +1,5 @@
 import type { Resource, ConversationAnalysis, ResourcesProviderId } from '@/types/resources'
 
-type ProviderInfo = {
-  available: boolean
-  provider: string | null
-  hasTavily: boolean
-  hasPerplexity: boolean
-  availableProviders: string[]
-}
-
-type GenerateResult = {
-  resources: Resource[]
-  topics: string[]
-  analysis?: ConversationAnalysis
-}
-
-declare global {
-  interface Window {
-    ipc: {
-      resources: {
-        generate: (payload: {
-          workspaceId: string
-          conversationId: string
-          title: string
-          bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
-          userRequest?: string
-          preferredProvider?: ResourcesProviderId
-        }) => Promise<GenerateResult>
-        addMore: (payload: {
-          workspaceId: string
-          conversationId: string
-          title: string
-          bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
-          existingResources: Resource[]
-          userRequest?: string
-        }) => Promise<GenerateResult>
-        get: (payload: {
-          workspaceId: string
-          conversationId: string
-        }) => Promise<{
-          id: string
-          workspaceId: string
-          conversationId: string
-          resources: Resource[]
-          topics: string[]
-          modelUsed: string
-          metadata?: { analysis?: ConversationAnalysis }
-          createdAt: number
-          updatedAt: number
-        } | null>
-        clear: (payload: {
-          workspaceId: string
-          conversationId: string
-        }) => Promise<boolean>
-        hasTavilyKey: () => Promise<boolean>
-        hasPerplexityKey: () => Promise<boolean>
-        hasApiKey: () => Promise<boolean>
-        getProviderInfo: () => Promise<ProviderInfo>
-      }
-    }
-  }
-}
-
 type ConversationBubble = {
   type: 'user' | 'ai'
   text: string
@@ -85,6 +24,20 @@ type AddMoreInput = {
   userRequest?: string
 }
 
+type ProviderInfo = {
+  available: boolean
+  provider: string | null
+  hasTavily: boolean
+  hasPerplexity: boolean
+  availableProviders: string[]
+}
+
+type GenerateResult = {
+  resources: Resource[]
+  topics: string[]
+  analysis?: ConversationAnalysis
+}
+
 type ResourcesRecord = {
   id: string
   workspaceId: string
@@ -99,7 +52,7 @@ type ResourcesRecord = {
 
 export const resourcesIpc = {
   async generate(input: GenerateInput): Promise<GenerateResult> {
-    const result = await window.ipc.resources.generate(input)
+    const result = (await window.ipc.resources.generate(input)) as GenerateResult
     return {
       resources: result.resources,
       topics: result.topics,
@@ -108,7 +61,7 @@ export const resourcesIpc = {
   },
 
   async addMore(input: AddMoreInput): Promise<GenerateResult> {
-    const result = await window.ipc.resources.addMore(input)
+    const result = (await window.ipc.resources.addMore(input)) as GenerateResult
     return {
       resources: result.resources,
       topics: result.topics,
@@ -120,7 +73,16 @@ export const resourcesIpc = {
     workspaceId: string,
     conversationId: string
   ): Promise<ResourcesRecord | null> {
-    return window.ipc.resources.get({ workspaceId, conversationId })
+    const result = (await window.ipc.resources.get({ workspaceId, conversationId })) as
+      | (ResourcesRecord & { resources: unknown[] })
+      | null
+
+    if (!result) return null
+
+    return {
+      ...result,
+      resources: result.resources as Resource[],
+    }
   },
 
   async clear(workspaceId: string, conversationId: string): Promise<boolean> {

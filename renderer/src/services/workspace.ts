@@ -74,7 +74,7 @@ class WorkspaceService {
   }
 
   invalidateWorkspace(workspaceId: string): void {
-    for (const key of this.cache.keys()) {
+    for (const key of Array.from(this.cache.keys())) {
       if (key.includes(workspaceId)) {
         this.cache.delete(key)
       }

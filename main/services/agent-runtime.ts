@@ -925,8 +925,9 @@ export async function prepareChatContext(chatId: string): Promise<ChatContext> {
   let summaryGeneratedNow = false
 
   const latestMessageTimestamp = messages[messages.length - 1]?.createdAt ?? Date.now()
-  const uncoveredMessages = summaryRecord
-    ? messages.filter((msg) => msg.createdAt > summaryRecord.coveredUntil)
+  const currentSummary = summaryRecord
+  const uncoveredMessages = currentSummary
+    ? messages.filter((msg) => msg.createdAt > currentSummary.coveredUntil)
     : messages
 
   const shouldRefreshSummary =

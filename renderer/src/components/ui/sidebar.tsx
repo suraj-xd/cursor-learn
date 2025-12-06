@@ -121,9 +121,9 @@ export function SidebarProvider({
   );
 }
 
-interface SidebarProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof sidebarVariants> {
+type SidebarBaseProps = Omit<React.ComponentProps<typeof motion.aside>, "ref">;
+
+interface SidebarProps extends SidebarBaseProps, VariantProps<typeof sidebarVariants> {
   open?: boolean;
   width?: string;
 }

@@ -80,7 +80,7 @@ export type CompactSessionRecord = {
   currentStep: CompactStep | null
   chunksTotal: number
   chunksProcessed: number
-  logs: unknown[]
+  logs: CompactSessionLog[]
   error: string | null
   startedAt: number
   completedAt: number | null
@@ -132,29 +132,30 @@ export const upsertApiKey = ({
     updatedAt: now,
   })
 
-  return getApiKey(provider)
+  return getApiKey(provider)!
 }
 
 export const getApiKey = (provider: string): ApiKeyRecord | null => {
   const stmt = dbStatement((database) =>
-    database.prepare<ApiKeyRecord & { created_at: number; updated_at: number }>(
+    database.prepare(
       `SELECT provider, label, secret, created_at as createdAt, updated_at as updatedAt
        FROM api_keys WHERE provider = ?`
     )
   )
 
-  return stmt.get(provider) ?? null
+  const record = stmt.get(provider) as ApiKeyRecord | undefined
+  return record ?? null
 }
 
 export const listApiKeys = (): ApiKeyRecord[] => {
   const stmt = dbStatement((database) =>
-    database.prepare<ApiKeyRecord & { created_at: number; updated_at: number }>(
+    database.prepare(
       `SELECT provider, label, secret, created_at as createdAt, updated_at as updatedAt
        FROM api_keys ORDER BY provider ASC`
     )
   )
 
-  return stmt.all()
+  return stmt.all() as ApiKeyRecord[]
 }
 
 export const deleteApiKey = (provider: string): void => {
@@ -215,7 +216,8 @@ export const updateChatSummary = ({
     )
   )
 
-  return stmt.get({ chatId, summary, updatedAt: now }) ?? null
+  const record = stmt.get({ chatId, summary, updatedAt: now }) as ChatRecord | undefined
+  return record ?? null
 }
 
 export const listChats = ({
@@ -255,7 +257,7 @@ export const listChats = ({
      LIMIT @limit`
   )
 
-  return stmt.all(params)
+  return stmt.all(params) as ChatRecord[]
 }
 
 export const getChatById = (chatId: string): ChatRecord | null => {
@@ -268,7 +270,8 @@ export const getChatById = (chatId: string): ChatRecord | null => {
     )
   )
 
-  return stmt.get(chatId) ?? null
+  const record = stmt.get(chatId) as ChatRecord | undefined
+  return record ?? null
 }
 
 export const deleteChat = (chatId: string): void => {
@@ -300,7 +303,8 @@ export const updateChatModel = ({
     ),
   )
 
-  return stmt.get({ chatId, modelId }) ?? null
+  const record = stmt.get({ chatId, modelId }) as ChatRecord | undefined
+  return record ?? null
 }
 
 export const updateChatTitle = ({
@@ -327,7 +331,8 @@ export const updateChatTitle = ({
     ),
   )
 
-  return stmt.get({ chatId, title }) ?? null
+  const record = stmt.get({ chatId, title }) as ChatRecord | undefined
+  return record ?? null
 }
 
 export const insertMessage = ({
@@ -394,7 +399,7 @@ export const listMessagesForChat = (chatId: string): MessageRecord[] => {
     )
   )
 
-  const rows = stmt.all(chatId)
+  const rows = stmt.all(chatId) as (MessageRecord & { metadata: string | null })[]
   return rows.map((row) => ({
     ...row,
     metadata: deserialize(row.metadata),
@@ -432,7 +437,7 @@ export const listMentionsForChat = (chatId: string): ChatMentionRecord[] => {
     )
   )
 
-  return stmt.all(chatId)
+  return stmt.all(chatId) as ChatMentionRecord[]
 }
 
 export const getContextSummary = (chatId: string): ContextSummaryRecord | null => {
@@ -451,7 +456,8 @@ export const getContextSummary = (chatId: string): ContextSummaryRecord | null =
     )
   )
 
-  return stmt.get(chatId) ?? null
+  const record = stmt.get(chatId) as ContextSummaryRecord | undefined
+  return record ?? null
 }
 
 export const upsertContextSummary = ({
@@ -509,7 +515,7 @@ export const upsertContextSummary = ({
     )
   )
 
-  return stmt.get({
+  const record = stmt.get({
     chatId,
     summary,
     coveredMessageCount,
@@ -518,7 +524,9 @@ export const upsertContextSummary = ({
     strategy,
     createdAt: now,
     updatedAt: now,
-  })
+  }) as ContextSummaryRecord | undefined
+
+  return record!
 }
 
 export const deleteContextSummary = (chatId: string): void => {
@@ -611,12 +619,14 @@ export const createCompactedChat = ({
     metadata: serialize(metadata),
     createdAt: now,
     updatedAt: now,
-  })
+  }) as (CompactedChatRecord & { structuredData: string | null; metadata: string | null }) | undefined
+
+  const record = result!
 
   return {
-    ...result,
-    structuredData: deserialize(result.structuredData),
-    metadata: deserialize(result.metadata),
+    ...record,
+    structuredData: deserialize(record.structuredData),
+    metadata: deserialize(record.metadata),
   }
 }
 
@@ -633,13 +643,17 @@ export const getCompactedChat = (id: string): CompactedChatRecord | null => {
     )
   )
 
-  const result = stmt.get(id)
+  const result = stmt.get(id) as
+    | (CompactedChatRecord & { structuredData: string | null; metadata: string | null })
+    | undefined
   if (!result) return null
 
+  const record = result as CompactedChatRecord & { structuredData: string | null; metadata: string | null }
+
   return {
-    ...result,
-    structuredData: deserialize(result.structuredData),
-    metadata: deserialize(result.metadata),
+    ...record,
+    structuredData: deserialize(record.structuredData),
+    metadata: deserialize(record.metadata),
   }
 }
 
@@ -659,13 +673,17 @@ export const getCompactedChatByConversation = (
     )
   )
 
-  const result = stmt.get(workspaceId, conversationId)
+  const result = stmt.get(workspaceId, conversationId) as
+    | (CompactedChatRecord & { structuredData: string | null; metadata: string | null })
+    | undefined
   if (!result) return null
 
+  const record = result as CompactedChatRecord & { structuredData: string | null; metadata: string | null }
+
   return {
-    ...result,
-    structuredData: deserialize(result.structuredData),
-    metadata: deserialize(result.metadata),
+    ...record,
+    structuredData: deserialize(record.structuredData),
+    metadata: deserialize(record.metadata),
   }
 }
 
@@ -712,11 +730,13 @@ export const createCompactSession = ({
     status,
     logs: serialize([]),
     startedAt: now,
-  })
+  }) as (CompactSessionRecord & { logs: string | null }) | undefined
+
+  const record = result!
 
   return {
-    ...result,
-    logs: deserialize(result.logs) ?? [],
+    ...record,
+    logs: (deserialize(record.logs) as CompactSessionLog[]) ?? [],
   }
 }
 
@@ -731,12 +751,12 @@ export const getCompactSession = (id: string): CompactSessionRecord | null => {
     )
   )
 
-  const result = stmt.get(id)
+  const result = stmt.get(id) as (CompactSessionRecord & { logs: string | null }) | undefined
   if (!result) return null
 
   return {
     ...result,
-    logs: deserialize(result.logs) ?? [],
+    logs: (deserialize(result.logs) as CompactSessionLog[]) ?? [],
   }
 }
 
@@ -756,12 +776,16 @@ export const getActiveCompactSession = (
     )
   )
 
-  const result = stmt.get(workspaceId, conversationId)
+  const result = stmt.get(workspaceId, conversationId) as
+    | (CompactSessionRecord & { logs: string | null })
+    | undefined
   if (!result) return null
 
+  const record = result as CompactSessionRecord & { logs: string | null }
+
   return {
-    ...result,
-    logs: deserialize(result.logs) ?? [],
+    ...record,
+    logs: (deserialize(record.logs) as CompactSessionLog[]) ?? [],
   }
 }
 
@@ -834,12 +858,14 @@ export const updateCompactSession = ({
     )
   )
 
-  const result = stmt.get(params)
+  const result = stmt.get(params) as (CompactSessionRecord & { logs: string | null }) | undefined
   if (!result) return null
 
+  const record = result as CompactSessionRecord & { logs: string | null }
+
   return {
-    ...result,
-    logs: deserialize(result.logs) ?? [],
+    ...record,
+    logs: (deserialize(record.logs) as CompactSessionLog[]) ?? [],
   }
 }
 
@@ -862,12 +888,16 @@ export const appendCompactSessionLog = (
     )
   )
 
-  const result = stmt.get({ id, logs: serialize(logs) })
+  const result = stmt.get({ id, logs: serialize(logs) }) as
+    | (CompactSessionRecord & { logs: string | null })
+    | undefined
   if (!result) return null
 
+  const record = result as CompactSessionRecord & { logs: string | null }
+
   return {
-    ...result,
-    logs: deserialize(result.logs) ?? [],
+    ...record,
+    logs: (deserialize(record.logs) as CompactSessionLog[]) ?? [],
   }
 }
 
