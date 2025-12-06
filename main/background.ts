@@ -49,6 +49,17 @@ import {
   type ConversationInput as OverviewConversationInput,
 } from './services/overview-agent'
 import {
+  generateResources,
+  addMoreResources,
+  getResourcesForConversation,
+  clearResourcesForConversation,
+  checkTavilyKeyAvailable,
+  checkPerplexityKeyAvailable,
+  checkAnyApiKeyAvailable,
+  getAvailableProviderInfo,
+  type ResourcesProviderId,
+} from './services/resources-agent'
+import {
   listWorkspaces,
   getWorkspaceDetails,
   getWorkspaceTabs,
@@ -630,3 +641,67 @@ ipcMain.handle(
     return deleteLearnings(payload.workspaceId, payload.conversationId)
   }
 )
+
+ipcMain.handle(
+  'resources:generate',
+  async (
+    _event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+      userRequest?: string
+      preferredProvider?: ResourcesProviderId
+    }
+  ) => {
+    return generateResources(payload)
+  }
+)
+
+ipcMain.handle(
+  'resources:add-more',
+  async (
+    _event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+      existingResources: unknown[]
+      userRequest?: string
+    }
+  ) => {
+    return addMoreResources(payload as Parameters<typeof addMoreResources>[0])
+  }
+)
+
+ipcMain.handle(
+  'resources:get',
+  (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getResourcesForConversation(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle(
+  'resources:clear',
+  (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return clearResourcesForConversation(payload.workspaceId, payload.conversationId)
+  }
+)
+
+ipcMain.handle('resources:has-tavily-key', () => {
+  return checkTavilyKeyAvailable()
+})
+
+ipcMain.handle('resources:has-perplexity-key', () => {
+  return checkPerplexityKeyAvailable()
+})
+
+ipcMain.handle('resources:has-api-key', () => {
+  return checkAnyApiKeyAvailable()
+})
+
+ipcMain.handle('resources:provider-info', () => {
+  return getAvailableProviderInfo()
+})

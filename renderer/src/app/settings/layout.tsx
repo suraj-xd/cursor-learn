@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Paintbrush,
   Brain,
   BarChart3,
   User,
   Info,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getVersionString } from "@/lib/config";
+import { Button } from "@/components/ui/button";
 
 const SETTINGS_NAV = [
   {
@@ -56,7 +58,7 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  
+  const router = useRouter();
   const getActiveSection = () => {
     if (pathname === "/settings") return "overview";
     const match = SETTINGS_NAV.find(
@@ -70,6 +72,17 @@ export default function SettingsLayout({
   return (
     <div className="flex h-[calc(100vh-64px)] border border-border rounded-[8px] rounded-tr-none mx-4 overflow-hidden">
       <aside className="w-52 shrink-0 border-r border-border/50 bg-muted/20 flex flex-col">
+        <div className="px-2 py-1 border-b border-border/50">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
+        </div>
         <div className="p-2 flex-1">
           <div className="space-y-1">
             {SETTINGS_NAV.map((nav) => {

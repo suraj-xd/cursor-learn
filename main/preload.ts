@@ -23,6 +23,7 @@ import type {
   UsageByDay,
   UsageFeature,
   LearningsRecord,
+  ResourcesRecord,
 } from './services/agent-storage'
 import type { ChatContext } from './services/agent-runtime'
 import type { NoteRecord } from './services/notes-storage'
@@ -331,6 +332,52 @@ const api = {
       ipcRenderer.invoke('learnings:get', payload) as Promise<LearningsRecord | null>,
     delete: (payload: { workspaceId: string; conversationId: string }) =>
       ipcRenderer.invoke('learnings:delete', payload) as Promise<boolean>,
+  },
+  resources: {
+    generate: (payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+      userRequest?: string
+      preferredProvider?: string
+    }) =>
+      ipcRenderer.invoke('resources:generate', payload) as Promise<{
+        resources: unknown[]
+        topics: string[]
+        analysis?: unknown
+      }>,
+    addMore: (payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+      existingResources: unknown[]
+      userRequest?: string
+    }) =>
+      ipcRenderer.invoke('resources:add-more', payload) as Promise<{
+        resources: unknown[]
+        topics: string[]
+        analysis?: unknown
+      }>,
+    get: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('resources:get', payload) as Promise<ResourcesRecord | null>,
+    clear: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('resources:clear', payload) as Promise<boolean>,
+    hasTavilyKey: () =>
+      ipcRenderer.invoke('resources:has-tavily-key') as Promise<boolean>,
+    hasPerplexityKey: () =>
+      ipcRenderer.invoke('resources:has-perplexity-key') as Promise<boolean>,
+    hasApiKey: () =>
+      ipcRenderer.invoke('resources:has-api-key') as Promise<boolean>,
+    getProviderInfo: () =>
+      ipcRenderer.invoke('resources:provider-info') as Promise<{
+        available: boolean
+        provider: string | null
+        hasTavily: boolean
+        hasPerplexity: boolean
+        availableProviders: string[]
+      }>,
   },
 }
 

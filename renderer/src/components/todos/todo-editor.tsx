@@ -173,8 +173,8 @@ export function TodoEditor({ className }: TodoEditorProps) {
         </div>
       </div>
 
-      <div className="flex-1 pt-12 pb-8 min-h-0 scrollbar-hidden">
-        <EditorContent editor={editor} className="h-full scrollbar-hidden" />
+      <div className="flex-1 pt-12 pb-8 min-h-0 scrollbar-hidden max-w-5xl mr-auto">
+        <EditorContent editor={editor} className="h-full scrollbar-hidden pb-20" />
       </div>
 
       <style jsx global>{`

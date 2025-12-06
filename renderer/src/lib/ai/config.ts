@@ -1,5 +1,47 @@
 export type ProviderId = 'openai' | 'google' | 'anthropic' | 'openrouter'
 
+export type SearchProviderId = 'tavily' | 'perplexity'
+
+export type ResourcesProviderId = 'auto' | 'perplexity' | 'tavily' | 'google' | 'openai' | 'anthropic'
+
+export type SearchProviderConfig = {
+  id: SearchProviderId
+  name: string
+  description: string
+  placeholder: string
+  apiBase: string
+}
+
+export const SEARCH_PROVIDERS: SearchProviderConfig[] = [
+  {
+    id: 'perplexity',
+    name: 'Perplexity Sonar',
+    description: 'Deep research API - best for comprehensive learning resources.',
+    placeholder: 'pplx-...',
+    apiBase: 'https://api.perplexity.ai',
+  },
+  {
+    id: 'tavily',
+    name: 'Tavily Search',
+    description: 'AI-powered search API for resource discovery.',
+    placeholder: 'tvly-...',
+    apiBase: 'https://api.tavily.com',
+  },
+]
+
+export const RESOURCES_PROVIDER_OPTIONS: { id: ResourcesProviderId; label: string; description: string }[] = [
+  { id: 'auto', label: 'Auto', description: 'Best available (Perplexity → Tavily → AI)' },
+  { id: 'perplexity', label: 'Perplexity', description: 'Deep research with citations' },
+  { id: 'tavily', label: 'Tavily', description: 'Web search + AI generation' },
+  { id: 'google', label: 'Gemini', description: 'Google AI generation' },
+  { id: 'openai', label: 'GPT', description: 'OpenAI generation' },
+  { id: 'anthropic', label: 'Claude', description: 'Anthropic generation' },
+]
+
+export function getSearchProvider(id: SearchProviderId): SearchProviderConfig | undefined {
+  return SEARCH_PROVIDERS.find((p) => p.id === id)
+}
+
 export type ModelCapability = 'vision' | 'reasoning' | 'streaming' | 'function_calling'
 
 export type ModelOption = {

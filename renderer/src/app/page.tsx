@@ -20,7 +20,7 @@ export default function Home() {
         <Preview/>
         <motion.p 
         viewport={{ once: true }}
-          className="text-sm text-muted-foreground pt-2.5"
+          className="text-sm text-muted-foreground pt-2.5 font-departure"
           initial={hasAnimated ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ 

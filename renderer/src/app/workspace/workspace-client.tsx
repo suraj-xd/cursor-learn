@@ -19,9 +19,10 @@ import { ChatView } from '@/components/workspace/chat-view'
 import { CompactedChatView } from '@/components/workspace/compacted-chat-view'
 import { OverviewView } from '@/components/workspace/overview-view'
 import { LearningsView } from '@/components/workspace/learnings-view'
+import { ResourcesView } from '@/components/workspace/resources-view'
 import { cn } from '@/lib/utils'
 
-type ContentTab = 'overview' | 'learnings' | 'sources' | 'compacted' | 'raw'
+type ContentTab = 'overview' | 'learnings' | 'resources' | 'compacted' | 'raw'
 
 const ChatViewSkeleton = memo(function ChatViewSkeleton() {
   return (
@@ -122,8 +123,8 @@ const ChatContentTabs = memo(function ChatContentTabs({
         <button type="button" onClick={() => onTabChange('learnings')} className={tabClass('learnings')}>
           <h2 className="font-semibold font-mono uppercase text-xs">Learnings</h2>
         </button>
-        <button type="button" onClick={() => onTabChange('sources')} className={tabClass('sources')}>
-          <h2 className="font-semibold font-mono uppercase text-xs">Sources</h2>
+        <button type="button" onClick={() => onTabChange('resources')} className={tabClass('resources')}>
+          <h2 className="font-semibold font-mono uppercase text-xs">Resources</h2>
         </button>
         <button type="button" onClick={() => onTabChange('compacted')} className={tabClass('compacted')}>
           <h2 className="font-semibold font-mono uppercase text-xs flex items-center gap-1.5">
@@ -281,15 +282,20 @@ function WorkspaceClientInner() {
                         bubbles={selectedChat.bubbles}
                       />
                     </Suspense>
+                  ) : activeContentTab === 'resources' ? (
+                    <Suspense fallback={<ChatViewSkeleton />}>
+                      <ResourcesView
+                        workspaceId={workspaceId ?? ''}
+                        conversationId={selectedChat.id}
+                        conversationTitle={selectedChat.title}
+                        bubbles={selectedChat.bubbles}
+                      />
+                    </Suspense>
                   ) : activeContentTab === 'raw' ? (
                     <Suspense fallback={<ChatViewSkeleton />}>
                       <ChatView chat={selectedChat} />
                     </Suspense>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground">
-                      <p className="text-sm">{activeContentTab.charAt(0).toUpperCase() + activeContentTab.slice(1)} view coming soon</p>
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : (

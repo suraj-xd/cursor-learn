@@ -3,6 +3,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type { CodeThemeId } from "@/lib/code-themes"
+import type { ResourcesProviderId } from "@/types/resources"
 
 type ModelRole = "chat" | "title" | "compact"
 
@@ -20,6 +21,10 @@ type SettingsState = {
   setAutoRunOverview: (enabled: boolean) => void
   autoRunLearnings: boolean
   setAutoRunLearnings: (enabled: boolean) => void
+  autoRunResources: boolean
+  setAutoRunResources: (enabled: boolean) => void
+  resourcesProvider: ResourcesProviderId
+  setResourcesProvider: (provider: ResourcesProviderId) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -37,6 +42,10 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoRunOverview: (enabled) => set({ autoRunOverview: enabled }),
       autoRunLearnings: false,
       setAutoRunLearnings: (enabled) => set({ autoRunLearnings: enabled }),
+      autoRunResources: false,
+      setAutoRunResources: (enabled) => set({ autoRunResources: enabled }),
+      resourcesProvider: "auto",
+      setResourcesProvider: (provider) => set({ resourcesProvider: provider }),
     }),
     {
       name: "app-settings",

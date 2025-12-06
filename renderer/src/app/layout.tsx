@@ -1,6 +1,7 @@
 import localFont from "next/font/local";
 import "./globals.css";
 import "../styles/prism-theme.css";
+import "../styles/fonts.css";
 import { Navbar } from "@/components/navbar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -67,6 +68,18 @@ const newsreader = localFont({
   display: "swap",
 });
 
+const departure = localFont({
+  src: [
+    {
+      path: "../../../resources/fonts/DepartureMono-Regular.otf",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  variable: "--font-departure",
+  display: "swap",
+});
+
 export default function RootLayout({
   children,
 }: {
@@ -75,7 +88,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning data-ui-theme="retro-boy">
       <body
-        className={`${grotesk.variable} ${berkeleyMono.variable} ${newsreader.variable} min-h-screen flex flex-col`}
+        className={`${grotesk.variable} ${berkeleyMono.variable} ${newsreader.variable} ${departure.variable} min-h-screen flex flex-col`}
       >
         <ThemeProvider>
           <TooltipProvider>

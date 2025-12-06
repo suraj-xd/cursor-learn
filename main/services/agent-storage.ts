@@ -1528,3 +1528,114 @@ export const deleteLearnings = (workspaceId: string, conversationId: string): bo
   const result = stmt.run(workspaceId, conversationId)
   return result.changes > 0
 }
+
+export type ResourcesRecord = {
+  id: string
+  workspaceId: string
+  conversationId: string
+  resources: unknown[]
+  topics: string[]
+  modelUsed: string
+  metadata: unknown
+  createdAt: number
+  updatedAt: number
+}
+
+export const saveResources = ({
+  id = randomUUID(),
+  workspaceId,
+  conversationId,
+  resources,
+  topics,
+  modelUsed,
+  metadata,
+}: {
+  id?: string
+  workspaceId: string
+  conversationId: string
+  resources: unknown[]
+  topics: string[]
+  modelUsed: string
+  metadata?: unknown
+}): ResourcesRecord => {
+  const now = TIMESTAMP()
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `INSERT INTO conversation_resources (
+         id, workspace_id, conversation_id, resources, topics,
+         model_used, metadata, created_at, updated_at
+       ) VALUES (
+         @id, @workspaceId, @conversationId, @resources, @topics,
+         @modelUsed, @metadata, @createdAt, @updatedAt
+       )
+       ON CONFLICT(workspace_id, conversation_id) DO UPDATE SET
+         resources = excluded.resources,
+         topics = excluded.topics,
+         model_used = excluded.model_used,
+         metadata = excluded.metadata,
+         updated_at = excluded.updated_at
+       RETURNING
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         resources, topics, model_used as modelUsed, metadata,
+         created_at as createdAt, updated_at as updatedAt`
+    )
+  )
+
+  const result = stmt.get({
+    id,
+    workspaceId,
+    conversationId,
+    resources: serialize(resources),
+    topics: serialize(topics),
+    modelUsed,
+    metadata: serialize(metadata),
+    createdAt: now,
+    updatedAt: now,
+  }) as ResourcesRecord & { resources: string; topics: string; metadata: string }
+
+  return {
+    ...result,
+    resources: deserialize<unknown[]>(result.resources) ?? [],
+    topics: deserialize<string[]>(result.topics) ?? [],
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const getResources = (
+  workspaceId: string,
+  conversationId: string
+): ResourcesRecord | null => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `SELECT
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         resources, topics, model_used as modelUsed, metadata,
+         created_at as createdAt, updated_at as updatedAt
+       FROM conversation_resources
+       WHERE workspace_id = ? AND conversation_id = ?`
+    )
+  )
+
+  const result = stmt.get(workspaceId, conversationId) as
+    | (ResourcesRecord & { resources: string; topics: string; metadata: string })
+    | undefined
+
+  if (!result) return null
+
+  return {
+    ...result,
+    resources: deserialize<unknown[]>(result.resources) ?? [],
+    topics: deserialize<string[]>(result.topics) ?? [],
+    metadata: deserialize(result.metadata),
+  }
+}
+
+export const deleteResources = (workspaceId: string, conversationId: string): boolean => {
+  const stmt = dbStatement((database) =>
+    database.prepare(
+      `DELETE FROM conversation_resources WHERE workspace_id = ? AND conversation_id = ?`
+    )
+  )
+  const result = stmt.run(workspaceId, conversationId)
+  return result.changes > 0
+}

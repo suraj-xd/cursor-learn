@@ -56,12 +56,12 @@ const ConversationRow = memo(function ConversationRow({
         {conversation.name}
       </span>
       <span
-        className="text-xs text-muted-foreground text-right whitespace-nowrap font-mono uppercase tracking-wider"
+        className="text-xs text-muted-foreground text-right whitespace-nowrap font-departure uppercase tracking-wider"
         title={timeAgo}
       >
         {createdDate}
       </span>
-      <span className="text-xs text-muted-foreground text-right tabular-nums font-mono uppercase tracking-wider">
+      <span className="text-xs text-muted-foreground text-right tabular-nums font-departure uppercase tracking-wider">
         {conversation.messageCount} msg
       </span>
     </Link>
