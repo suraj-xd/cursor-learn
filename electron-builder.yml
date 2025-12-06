@@ -13,6 +13,13 @@ files:
       - resources/**
 asarUnpack:
   - node_modules/better-sqlite3/build/Release/*.node
+mac:
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
 publish:
   provider: github
   owner: suraj-xd
