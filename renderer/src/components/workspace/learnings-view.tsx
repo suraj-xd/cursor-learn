@@ -27,6 +27,7 @@ import { yaml } from "@codemirror/lang-yaml"
 import { useLearningsStore, learningsActions } from "@/store/learnings"
 import { useSettingsStore } from "@/store/settings"
 import { getCodeThemeStyle } from "@/lib/code-themes"
+import { useTheme } from "@/components/theme-provider"
 import { agentsIpc } from "@/lib/agents/ipc"
 import { PROVIDER_PRIORITY } from "@/lib/ai/config"
 import { compactIpc } from "@/lib/agents/compact-ipc"
@@ -49,6 +50,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 
 interface LearningsViewProps {
@@ -78,6 +88,8 @@ export function LearningsView({
   const [contextText, setContextText] = useState(
     bubbles.map((b) => `[${b.type.toUpperCase()}]: ${b.text}`).join("\n\n")
   )
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [userRequest, setUserRequest] = useState("")
 
   const {
     exercises,
@@ -160,7 +172,12 @@ export function LearningsView({
     }
   }, [autoRunLearnings, hasApiKey, initialized, contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId])
 
-  const handleAddMore = useCallback(() => {
+  const handleOpenAddDialog = useCallback(() => {
+    setUserRequest("")
+    setShowAddDialog(true)
+  }, [])
+
+  const handleAddMore = useCallback((customRequest?: string) => {
     learningsActions.addMoreExercises(
       contextText,
       conversationTitle,
@@ -168,8 +185,11 @@ export function LearningsView({
       selectedModel,
       { workspaceId, conversationId },
       activeTab,
-      3
+      3,
+      customRequest
     )
+    setShowAddDialog(false)
+    setUserRequest("")
   }, [contextText, conversationTitle, selectedProvider, selectedModel, activeTab, workspaceId, conversationId])
 
   const handleRegenerate = useCallback(() => {
@@ -290,7 +310,7 @@ export function LearningsView({
                 variant="outline"
                 size="sm"
                 className="mt-4 gap-2"
-                onClick={handleAddMore}
+                onClick={handleOpenAddDialog}
                 disabled={isGenerating}
               >
                 {isGenerating ? (
@@ -327,7 +347,7 @@ export function LearningsView({
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={handleAddMore}
+                  onClick={handleOpenAddDialog}
                   disabled={isGenerating}
                 >
                   {isGenerating ? (
@@ -342,6 +362,40 @@ export function LearningsView({
           )}
         </div>
       </ScrollArea>
+
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add More Exercises</DialogTitle>
+            <DialogDescription>
+              Want exercises on a specific topic? Describe what you&apos;d like to practice.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              placeholder="e.g., closures, async/await, React hooks..."
+              value={userRequest}
+              onChange={(e) => setUserRequest(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleAddMore(userRequest || undefined)
+                }
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave empty to generate based on conversation context
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleAddMore(userRequest || undefined)}>
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -385,7 +439,13 @@ interface InteractiveCardProps {
 
 function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, conversationId }: InteractiveCardProps) {
   const { codeTheme } = useSettingsStore()
-  const codeStyle = useMemo(() => getCodeThemeStyle(codeTheme), [codeTheme])
+  const { resolvedColorMode } = useTheme()
+  const codeStyle = useMemo(() => {
+    if (resolvedColorMode === "light") {
+      return getCodeThemeStyle("oneLight")
+    }
+    return getCodeThemeStyle(codeTheme)
+  }, [codeTheme, resolvedColorMode])
   const { isEvaluating } = useLearningsStore()
 
   const [userCode, setUserCode] = useState(exercise.starterCode)
@@ -468,7 +528,12 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
       </div>
 
       <div className="p-4 space-y-4">
-        <p className="text-sm">{exercise.prompt || "Exercise"}</p>
+        <div className="space-y-2">
+          <p className="text-sm">{exercise.prompt || "Exercise"}</p>
+          {exercise.topics && exercise.topics.length > 0 && (
+            <TopicBadges topics={exercise.topics} />
+          )}
+        </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -489,7 +554,7 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
               onChange={setUserCode}
               extensions={[getLanguageExtension(exercise.language)]}
               editable={attempt?.status !== "correct"}
-              theme="dark"
+              theme={resolvedColorMode}
               basicSetup={{
                 lineNumbers: true,
                 highlightActiveLineGutter: true,
@@ -526,7 +591,7 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
                 changed
               </span>
             </span>
-            <div className="rounded-md border bg-muted/30 overflow-hidden font-mono text-xs py-2">
+            <div className="rounded-md border overflow-hidden font-mono text-xs py-2">
               {exercise.expectedSolution.split("\n").map((line, idx) => {
                 const lineNum = idx + 1
                 const isChanged = changedLines.has(lineNum)
@@ -625,9 +690,14 @@ function McqCard({ exercise, attempt }: McqCardProps) {
       </div>
 
       <div className="p-4 space-y-4">
-        <p className="text-sm font-medium">
-          {exercise.prompt || "Question"}
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">
+            {exercise.prompt || "Question"}
+          </p>
+          {exercise.topics && exercise.topics.length > 0 && (
+            <TopicBadges topics={exercise.topics} />
+          )}
+        </div>
 
         <div className="space-y-2">
           {exercise.options.map((option) => {
@@ -729,9 +799,14 @@ function TfCard({ exercise, attempt }: TfCardProps) {
       </div>
 
       <div className="p-4 space-y-4">
-        <p className="text-sm">
-          {exercise.statement || exercise.prompt || "True/False question"}
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm">
+            {exercise.statement || exercise.prompt || "True/False question"}
+          </p>
+          {exercise.topics && exercise.topics.length > 0 && (
+            <TopicBadges topics={exercise.topics} />
+          )}
+        </div>
 
         <div className="flex items-center gap-3">
           <Button
@@ -784,6 +859,22 @@ function TfCard({ exercise, attempt }: TfCardProps) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function TopicBadges({ topics }: { topics: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {topics.slice(0, 3).map((topic) => (
+        <Badge
+          key={topic}
+          variant="secondary"
+          className="text-[10px] px-1.5 py-0 font-normal bg-muted text-muted-foreground"
+        >
+          {topic}
+        </Badge>
+      ))}
     </div>
   )
 }

@@ -22,17 +22,29 @@ function hashPrompt(prompt: string): string {
   return Math.abs(hash).toString(36)
 }
 
-const GENERATION_SYSTEM_PROMPT = `You are an AI tutor creating practice exercises from coding conversations.
+const GENERATION_SYSTEM_PROMPT = `You are an AI tutor creating educational exercises to help users learn programming concepts.
+
+IMPORTANT - EXERCISE PHILOSOPHY:
+- Extract the PROGRAMMING TOPICS and CONCEPTS from the conversation (e.g., debouncing, API calls, state management, closures)
+- Create GENERAL, EDUCATIONAL examples that teach these concepts - NOT the user's actual code
+- Think textbook-style exercises: clean, focused snippets that illustrate the concept
+- If the user discussed debounce, create a simple debounce example - don't copy their implementation
+- Focus on teaching the underlying concept with minimal, clear code
 
 EXERCISE TYPES:
-- interactive: Fill-in-the-blank code exercises
-- mcq: Multiple choice (4 options, 1 correct)
-- tf: True/False statements
+- interactive: Fill-in-the-blank code exercises (general examples teaching the concept)
+- mcq: Multiple choice about the concept (4 options, 1 correct)
+- tf: True/False statements about the concept
 
 DIFFICULTY:
-- easy: Simple completions, basic recall
-- medium: Some reasoning required
-- hard: Complex, multi-concept
+- easy: Basic understanding of the concept
+- medium: Applying the concept
+- hard: Edge cases, gotchas, deeper understanding
+
+TOPICS (REQUIRED):
+- Each exercise MUST include a "topics" array with 2-3 relevant programming topics
+- Topics should be short, lowercase tags like: "closures", "async/await", "react hooks", "typescript generics"
+- Pick the most relevant concepts being tested
 
 INTERACTIVE EXERCISES - CRITICAL:
 The starterCode MUST have clear inline hints showing WHERE to add code. Use comment syntax appropriate for the language:
@@ -88,20 +100,33 @@ OUTPUT JSON:
       "starterCode": "code with inline hints",
       "expectedSolution": "complete correct code",
       "placeholders": [{"id": "1", "label": "age property", "expected": "age: 25"}],
+      "topics": ["objects", "properties"],
       "createdAt": timestamp
     }
   ]
 }
 
-For MCQ: options array with {id, label, isCorrect}, explanation
-For TF: statement, correct (boolean), explanation
+For MCQ: options array with {id, label, isCorrect}, explanation, topics
+For TF: statement, correct (boolean), explanation, topics
+
+HANDLING USER REQUESTS (GUARDRAILS):
+If user provides a custom request, apply these rules strictly:
+- ONLY extract programming/coding topics from their request
+- IGNORE any non-programming requests, personal questions, or off-topic content
+- If they ask for "jokes" or "stories", ignore it and focus on any programming concepts mentioned
+- If no valid programming topic can be extracted, use topics from the conversation context instead
+- Examples of valid topics: "recursion", "promises", "CSS grid", "SQL joins", "React state"
+- Examples of INVALID requests to ignore: "tell me a joke", "what's the weather", "write my homework"
 
 RULES:
+- DO NOT copy user's actual code - create fresh, simple examples
+- Extract concepts and create textbook-style learning exercises
+- Keep code snippets SHORT (5-15 lines max) and focused on ONE concept
 - Inline hints are REQUIRED for interactive exercises
 - User should know exactly WHERE to type
-- Keep it practical, from the conversation context
 - Concise explanations (1-2 sentences)
 - No duplicates from existingPromptHashes
+- ALWAYS include 2-3 topics per exercise
 
 JSON only, no markdown.`
 
@@ -150,12 +175,23 @@ export async function generateExercises(
       content: GENERATION_SYSTEM_PROMPT,
     })
 
-    const userPrompt = `Generate exercises based on this conversation:
+    const userRequestSection = request.userRequest 
+      ? `\nUSER REQUEST (extract ONLY programming topics, ignore non-coding requests):\n"${request.userRequest}"\n`
+      : ''
+
+    const userPrompt = `Analyze this conversation and create learning exercises for the programming concepts discussed:
 
 CONVERSATION TITLE: "${request.conversationTitle}"
 
 CONVERSATION CONTEXT:
 ${request.chatContext}
+${userRequestSection}
+YOUR TASK:
+1. Identify the key programming concepts/topics from this conversation${request.userRequest ? ' and user request' : ''}
+2. Create GENERAL educational exercises that teach these concepts
+3. Use simple, clean example code - NOT the user's actual code
+4. Think: "What would a textbook exercise look like for this concept?"
+5. Include 2-3 relevant topic tags for each exercise
 
 REQUIREMENTS:
 - Interactive exercises: ${request.desiredCounts.interactive}

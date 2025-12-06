@@ -19,6 +19,7 @@ export type InteractiveExercise = {
   placeholders: InteractivePlaceholder[]
   expectedSolution: string
   hints?: string[]
+  topics?: string[]
   contextSummaryId?: string
   createdAt: number
 }
@@ -36,6 +37,7 @@ export type McqExercise = {
   difficulty: ExerciseDifficulty
   options: McqOption[]
   explanation: string
+  topics?: string[]
   contextSummaryId?: string
   createdAt: number
 }
@@ -48,6 +50,7 @@ export type TrueFalseExercise = {
   statement: string
   correct: boolean
   explanation: string
+  topics?: string[]
   contextSummaryId?: string
   createdAt: number
 }
@@ -77,6 +80,7 @@ export type GenerateExercisesRequest = {
     medium: number
     hard: number
   }
+  userRequest?: string
 }
 
 export type GenerateExercisesResponse = {

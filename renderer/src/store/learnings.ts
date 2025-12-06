@@ -40,7 +40,8 @@ type LearningsStore = LearningsState & {
     modelId: string,
     opts: { workspaceId?: string; conversationId?: string } | undefined,
     type: ExerciseType,
-    count?: number
+    count?: number,
+    userRequest?: string
   ) => Promise<void>
   evaluateInteractive: (
     exercise: InteractiveExercise,
@@ -58,7 +59,7 @@ type LearningsStore = LearningsState & {
 }
 
 const DEFAULT_COUNTS = {
-  interactive: 3,
+  interactive: 6,
   mcq: 2,
   tf: 2,
 }
@@ -194,7 +195,7 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
     }
   },
 
-  addMoreExercises: async (chatContext, conversationTitle, provider, modelId, opts, type, count = 3) => {
+  addMoreExercises: async (chatContext, conversationTitle, provider, modelId, opts, type, count = 3, userRequest) => {
     const state = get()
     if (state.isGenerating) return
 
@@ -213,6 +214,7 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
       conversationTitle,
       existingPromptHashes: existingHashes,
       desiredCounts,
+      userRequest,
     }
 
     try {
