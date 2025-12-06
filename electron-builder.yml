@@ -13,4 +13,7 @@ files:
       - resources/**
 asarUnpack:
   - node_modules/better-sqlite3/build/Release/*.node
-publish: null
+publish:
+  provider: github
+  owner: suraj-xd
+  repo: cursor-learn
