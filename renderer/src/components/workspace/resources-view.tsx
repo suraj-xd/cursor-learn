@@ -252,11 +252,11 @@ function CategorySection({
   if (resources.length === 0) return null
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-2">
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-0">
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 w-full text-left py-2 px-1 rounded hover:bg-muted/50 transition-colors"
+          className="flex items-center gap-2 w-full text-left px-1 rounded hover:bg-muted/50 transition-colors"
         >
           {isOpen ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -327,10 +327,10 @@ function ProviderDropdown({
                 </div>
                 <p className="text-[10px] text-muted-foreground">{option.description}</p>
               </div>
-              {!isAvailable && (
-                <Badge variant="outline" className="text-[8px]">
-                  No Key
-                </Badge>
+              {option.label === 'Tavily' && (
+                <p className="text-[10px] text-muted-foreground bg-muted/50 rounded-md px-1.5 py-0.5 border border-border">
+                  Best
+                </p>
               )}
             </DropdownMenuItem>
           )
@@ -585,11 +585,11 @@ export function ResourcesView({
                   <p className="text-sm text-foreground">
                     {analysis.coreProblem}
                   </p>
-                  {analysis.solutionApproach && (
+                  {/* {analysis.solutionApproach && (
                     <p className="text-xs text-muted-foreground">
                       <span className="font-medium">Solution approach:</span> {analysis.solutionApproach}
                     </p>
-                  )}
+                  )} */}
                   {topics.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {topics.map((topic) => (

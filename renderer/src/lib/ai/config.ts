@@ -31,7 +31,7 @@ export const SEARCH_PROVIDERS: SearchProviderConfig[] = [
 
 export const RESOURCES_PROVIDER_OPTIONS: { id: ResourcesProviderId; label: string; description: string }[] = [
   { id: 'auto', label: 'Auto', description: 'Best available (Perplexity → Tavily → AI)' },
-  { id: 'perplexity', label: 'Perplexity', description: 'Deep research with citations' },
+  // { id: 'perplexity', label: 'Perplexity', description: 'Deep research with citations' },
   { id: 'tavily', label: 'Tavily', description: 'Web search + AI generation' },
   { id: 'google', label: 'Gemini', description: 'Google AI generation' },
   { id: 'openai', label: 'GPT', description: 'OpenAI generation' },
