@@ -1309,7 +1309,7 @@ function MessagesView({
           {isLoading && (
             <div className="flex w-full justify-start mb-3">
               <div className="max-w-[80%] min-w-0">
-                <div className="rounded-2xl px-3.5 py-2.5 text-sm bg-muted/50">
+                <div className="rounded-lg px-3.5 py-2.5 text-sm dark:bg-[#232323] bg-[#F5F5F5] border border-muted-foreground/30">
                   {streamingContent ? (
                     <AgentResponse className="text-sm">
                       {streamingContent}
@@ -1409,10 +1409,10 @@ function MessageBubble({ message }: { message: AgentMessage }) {
           </div>
         )}
         <div
-          className={`rounded-2xl px-3.5 py-2.5 text-sm ${
+          className={`rounded-lg px-3.5 py-2.5 text-sm ${
             isUser
-              ? "bg-accent text-primary-foreground"
-              : "bg-muted border border-border"
+              ? "dark:bg-[#1F1F1F] bg-[#F5F5F5] border border-border"
+              : "dark:bg-[#232323] bg-[#F5F5F5] border border-muted-foreground/30"
           }`}
         >
           <AgentResponse className="text-sm">{message.content}</AgentResponse>

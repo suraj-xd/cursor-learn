@@ -5,6 +5,8 @@ import { useSettingsStore } from '@/store/settings'
 import { codeThemeStyles } from '@/lib/code-themes'
 import { ChatBubble } from './chat-bubble'
 import type { ChatTab } from '@/types/workspace'
+import { useTheme } from '../theme-provider'
+import { cn } from '@/lib/utils'
 
 interface ChatViewProps {
   chat: ChatTab
@@ -30,11 +32,14 @@ const INITIAL_BATCH = 10
 const LOAD_MORE_BATCH = 10
 
 export const ChatView = memo(function ChatView({ chat }: ChatViewProps) {
-  const codeTheme = useSettingsStore(state => state.codeTheme)
+  const codeTheme = useSettingsStore(state => state.codeTheme);
+  const { uiTheme } = useTheme();
   const codeThemeStyle = useMemo(() => 
     codeThemeStyles[codeTheme] ?? codeThemeStyles.vscDarkPlus,
     [codeTheme]
   )
+
+  const isRetroBoy = uiTheme === 'retro-boy'
 
   const [loadedCount, setLoadedCount] = useState(INITIAL_BATCH)
 
@@ -66,7 +71,10 @@ export const ChatView = memo(function ChatView({ chat }: ChatViewProps) {
 
   return (
     <div 
-      className="h-full overflow-y-auto p-4 space-y-4"
+      className={cn(
+        "h-full overflow-y-auto p-4 space-y-4",
+        isRetroBoy ? "bg-card" : "dark:bg-[#111] bg-[#F5F5F5]"
+      )}
       onScroll={handleScroll}
     >
       {visibleBubbles.map((bubble, index) => (
@@ -76,6 +84,7 @@ export const ChatView = memo(function ChatView({ chat }: ChatViewProps) {
             text={bubble.text}
             timestamp={bubble.timestamp}
             codeThemeStyle={codeThemeStyle}
+            isRetroBoy={isRetroBoy}
           />
         </Suspense>
       ))}
