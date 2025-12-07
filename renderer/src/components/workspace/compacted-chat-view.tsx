@@ -30,6 +30,7 @@ import {
   MoreVertical,
   RefreshCw,
 } from 'lucide-react'
+import { LanguageIcon } from '@/lib/language-icons'
 import { compactIpc, type CompactedChat, type CompactSession, type CompactProgress } from '@/lib/agents/compact-ipc'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -307,8 +308,8 @@ function CompactedContent({ content }: { content: string }) {
                 <div className="my-4 rounded-lg overflow-hidden border border-border">
                   {match && (
                     <div className="bg-muted/80 px-3 py-1.5 border-b border-border">
-                      <span className="text-xs font-mono text-muted-foreground uppercase">
-                        {match[1]}
+                      <span className="text-xs font-mono text-muted-foreground">
+                        <LanguageIcon language={match[1]} className="size-3.5" />
                       </span>
                     </div>
                   )}

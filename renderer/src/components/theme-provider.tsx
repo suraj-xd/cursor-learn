@@ -18,7 +18,7 @@ type ThemeProviderState = {
 const initialState: ThemeProviderState = {
   colorMode: "system",
   setColorMode: () => null,
-  uiTheme: "retro-boy",
+  uiTheme: "perplexity",
   setUiTheme: () => null,
   resolvedColorMode: "dark",
 }
@@ -40,7 +40,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   const [uiTheme, setUiTheme] = useState<UiThemeId>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("ui-theme") as UiThemeId) || "retro-boy"
+      return (localStorage.getItem("ui-theme") as UiThemeId) || "perplexity"
     }
     return "retro-boy"
   })

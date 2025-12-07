@@ -2,6 +2,7 @@ import VerticalCutReveal from "@/components/xd-ui/vertical-cut-reveal";
 import { useUsername } from "@/hooks";
 import { useEffect, useMemo } from "react";
 import { APP_CONFIG } from "@/lib/config";
+import { LandingAIInput } from "../landing-ai-input";
 
 const getTimeBasedEmoji = () => {
   const hour = new Date().getHours();
@@ -22,8 +23,8 @@ export default function Preview() {
     fetch();
   }, [fetch]);
   return (
-    <div className=" xs:text-2xl  text-2xl sm:text-4xl md:text-5xl lg:text-5xl xl:text-5xl flex items-start justify-between w-full font-overused-grotesk text-[#0015ff] dark:text-[#ADFF3F] tracking-wide uppercase">
-      <div>
+    <div className="xs:text-sm text-sm sm:text-lg md:text-xl lg:text-2xl xl:text-3xl flex flex-col gap-5 items-start justify-center w-full font-overused-grotesk text-[#0015ff] dark:text-[#ADFF3F] tracking-wide uppercase py-10">
+      {/* <div>
         <VerticalCutReveal
           splitBy="characters"
           staggerDuration={0.025}
@@ -33,6 +34,7 @@ export default function Preview() {
             stiffness: 200,
             damping: 21,
           }}
+          containerClassName="text-base sm:text-lg md:text-xl lg:text-2xl"
         >
           {`HI 👋, ${displayName ? displayName.toUpperCase() : "FRIEND"}!`}
         </VerticalCutReveal>
@@ -47,6 +49,7 @@ export default function Preview() {
             damping: 21,
             delay: 0.5,
           }}
+          containerClassName="text-base sm:text-lg md:text-xl lg:text-2xl"
         >
           {`${weatherEmoji} IT IS NICE ⇗ TO`}
         </VerticalCutReveal>
@@ -60,11 +63,12 @@ export default function Preview() {
             damping: 21,
             delay: 1.1,
           }}
+          containerClassName="text-base sm:text-lg md:text-xl lg:text-2xl"
         >
           {`MEET 😊 YOU.`}
         </VerticalCutReveal>
-      </div>
-      <div className="flex justify-end items-end flex-col">
+      </div> */}
+      <div className="w-full flex justify-center items-center flex-col">
         <VerticalCutReveal
           splitBy="characters"
           staggerDuration={0.025}
@@ -74,9 +78,9 @@ export default function Preview() {
             stiffness: 200,
             damping: 21,
           }}
-          containerClassName="text-3xl"
+          containerClassName="text-lg sm:text-xl md:text-2xl lg:text-3xl"
         >
-          {`BROWSE YOUR`}
+          {`Break down YOUR`}
         </VerticalCutReveal>
         <VerticalCutReveal
           splitBy="characters"
@@ -89,7 +93,7 @@ export default function Preview() {
             damping: 21,
             delay: 0.5,
           }}
-          containerClassName="font-medium  text-black dark:text-white font-mono"
+          containerClassName="font-medium text-black dark:text-white font-mono text-base sm:text-lg md:text-xl"
           wordLevelClassName=""
         >
           {`AGENTIC_CODING`}
@@ -104,10 +108,18 @@ export default function Preview() {
             damping: 21,
             delay: 1.1,
           }}
-          containerClassName="mt-1 text-xs text-center text-muted-foreground font-light"
+          containerClassName="mt-1 text-[10px] sm:text-xs text-center text-muted-foreground font-light"
         >
-          {`w // ${APP_CONFIG.name}`}
+          {`w // your cursor chat conversations`}
         </VerticalCutReveal>
+      </div>
+      <div className="py-6 flex-1 w-full flex justify-start items-center">
+        <LandingAIInput />
+      </div>
+      <div className="w-full flex justify-center items-center flex-col max-w-2xl mx-auto">
+        <p className="text-xs text-center text-muted-foreground font-light font-departure">
+          We turn your coding sessions into distilled programming insights.
+        </p>
       </div>
     </div>
   );

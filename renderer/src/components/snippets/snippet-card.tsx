@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toaster"
 import { DeleteConfirm } from "@/components/ui/delete-confirm"
+import { LanguageIcon } from "@/lib/language-icons"
 import type { Snippet } from "@/types/snippets"
 
 interface SnippetCardProps {
@@ -59,8 +60,8 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
           {snippet.isPinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
-          <Badge variant="secondary" className="font-mono uppercase text-[10px] py-0 shrink-0">
-            {snippet.language}
+          <Badge variant="secondary" className="font-mono text-[10px] py-0 shrink-0">
+            <LanguageIcon language={snippet.language} className="size-3" />
           </Badge>
           <span className="text-sm font-medium truncate">{title}</span>
         </div>

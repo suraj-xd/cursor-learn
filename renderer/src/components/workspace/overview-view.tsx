@@ -26,6 +26,7 @@ import {
   FileText,
   Key,
 } from 'lucide-react'
+import { LanguageIcon } from '@/lib/language-icons'
 import { overviewIpc, type ConversationOverview, type OverviewSession, type OverviewProgress } from '@/lib/agents/overview-ipc'
 import { useSettingsStore } from '@/store/settings'
 import Link from 'next/link'
@@ -309,8 +310,8 @@ function MarkdownContent({ content }: { content: string }) {
               <div className="my-4 rounded-lg overflow-hidden border border-border">
                 {match && (
                   <div className="bg-muted/80 px-3 py-1.5 border-b border-border">
-                    <span className="text-xs font-mono text-muted-foreground uppercase">
-                      {match[1]}
+                    <span className="text-xs font-mono text-muted-foreground">
+                      <LanguageIcon language={match[1]} className="size-3.5" />
                     </span>
                   </div>
                 )}

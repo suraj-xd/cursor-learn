@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/toaster"
 import { Button } from "../ui/button"
 import { NewSnippetEditor } from "../snippets/snippet-editor"
+import { LanguageIcon } from "@/lib/language-icons"
 
 interface AgentCodeBlockProps {
   code: string
@@ -63,7 +64,7 @@ export function AgentCodeBlock({
           />
         </div>
       <div className="absolute top-2 left-3 z-10 text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">
-        {language}
+        <LanguageIcon language={language} className="size-3.5" />
       </div>
         <div className="overflow-x-auto pt-7">
           <Highlighter

@@ -760,7 +760,7 @@ export function AssistantSidebar({
                       {msg.role === "assistant" ? (
                         <div className="group">
                           <Response className="text-sm">{msg.content}</Response>
-                          <div className="mt-1 flex justify-end">
+                          <div className="mt-1 flex justify-start">
                             <CopyResponseButton
                               content={msg.content}
                               className="h-6 w-6 opacity-50 hover:opacity-100"

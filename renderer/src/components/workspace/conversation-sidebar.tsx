@@ -49,22 +49,27 @@ const ConversationItem = memo(function ConversationItem({
         tooltip={tooltipText}
         onClick={handleClick}
       >
-        {/* <MessageSquare
+        <MessageSquare
           className={cn(
-            "h-4 w-4 shrink-0",
+            "h-3 w-3 shrink-0",
             isSelected
               ? "text-sidebar-accent-foreground"
               : "text-sidebar-foreground/70"
           )}
-        /> */}
+        />
         {!collapsed && (
           <div className="flex flex-col items-start overflow-hidden">
-            <span className="truncate w-full text-left">
+            <span className="truncate w-full text-left font-normal">
               {displayTitle}
             </span>
-            <span className="text-[10px] text-sidebar-foreground/50 font-mono">
+            {isSelected && (
+              <span className="text-[10px] text-sidebar-foreground/50 font-mono">
+                {formattedDate}
+              </span>
+            )}
+            {/* <span className="text-[10px] text-sidebar-foreground/50 font-mono">
               {formattedDate}
-            </span>
+            </span> */}
           </div>
         )}
       </SidebarMenuButton>
