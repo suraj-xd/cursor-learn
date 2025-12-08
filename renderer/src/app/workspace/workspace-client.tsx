@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import { ArrowLeft, MessageSquareOff, FolderOpen, Sparkles } from 'lucide-react'
 import Link from 'next/link'
-import { Loading } from '@/components/ui/loading'
+import { AILoader } from '@/components/ui/ai-loader'
 import { DownloadMenu } from '@/components/download-menu'
 import { CopyButton } from '@/components/copy-button'
 import { useSidebar } from '@/hooks/use-sidebar'
@@ -14,7 +14,15 @@ import { ConversationSidebar } from '@/components/workspace/conversation-sidebar
 import { AssistantSidebar } from '@/components/workspace/assistant-sidebar'
 import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useWorkspaceDetailStore, selectSelectedChat, workspaceDetailActions } from '@/store/workspace'
+import { 
+  useWorkspaceDetailStore, 
+  selectSelectedChat, 
+  selectTabs,
+  selectSelectedId,
+  selectIsLoading,
+  selectProjectName,
+  workspaceDetailActions 
+} from '@/store/workspace'
 import { ChatView } from '@/components/workspace/chat-view'
 import { CompactedChatView } from '@/components/workspace/compacted-chat-view'
 import { OverviewView } from '@/components/workspace/overview-view'
@@ -26,20 +34,8 @@ type ContentTab = 'overview' | 'learnings' | 'resources' | 'compacted' | 'raw'
 
 const ChatViewSkeleton = memo(function ChatViewSkeleton() {
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="p-4 rounded-lg bg-muted border border-border animate-pulse">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="h-5 w-12 bg-muted-foreground/20 rounded" />
-            <div className="h-4 w-32 bg-muted-foreground/20 rounded" />
-          </div>
-          <div className="space-y-2">
-            <div className="h-4 w-full bg-muted-foreground/20 rounded" />
-            <div className="h-4 w-3/4 bg-muted-foreground/20 rounded" />
-            <div className="h-4 w-1/2 bg-muted-foreground/20 rounded" />
-          </div>
-        </div>
-      ))}
+    <div className="h-full flex items-center justify-center">
+      <AILoader variant="compact" />
     </div>
   )
 })
@@ -223,7 +219,11 @@ function WorkspaceClientInner() {
   }
 
   if (isLoading) {
-    return <Loading />
+    return (
+      <div className="h-full flex items-center justify-center">
+        <AILoader />
+      </div>
+    )
   }
 
   return (

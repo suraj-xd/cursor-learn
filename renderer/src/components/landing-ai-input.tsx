@@ -12,7 +12,6 @@ import {
   Paperclip,
   X,
 } from "lucide-react"
-import { motion, AnimatePresence } from "motion/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -300,12 +299,7 @@ export const LandingAIInput = memo(function LandingAIInput() {
   const anyCompacting = attachedChats.some((c) => c.status === "compacting")
 
   return (
-    <motion.div
-      className="w-full max-w-2xl mx-auto"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 1.5, duration: 0.5, ease: "easeOut" }}
-    >
+    <div className="w-full max-w-2xl mx-auto">
       <div className="rounded-2xl border border-border bg-card/50 backdrop-blur-sm overflow-hidden shadow-lg">
         <div className="flex items-center justify-between px-4 py-1 border-b border-border/50">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -325,47 +319,40 @@ export const LandingAIInput = memo(function LandingAIInput() {
         </div>
 
         <div className="p-4">
-          <AnimatePresence>
-            {attachedChats.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-3 flex flex-wrap gap-2"
-              >
-                {attachedChats.map((chat) => (
-                  <div
-                    key={chat.id}
-                    className={cn(
-                      "gap-1.5 pr-1 text-xs flex items-center px-2 py-1 rounded-md bg-background border border-border",
-                      chat.status === "compacting" && "animate-pulse"
-                    )}
+          {attachedChats.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {attachedChats.map((chat) => (
+                <div
+                  key={chat.id}
+                  className={cn(
+                    "gap-1.5 pr-1 text-xs flex items-center px-2 py-1 rounded-md bg-background border border-border",
+                    chat.status === "compacting" && "animate-pulse"
+                  )}
+                >
+                  {chat.status === "compacting" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <FilePlusIcon className="h-3 w-3 text-green-500" />
+                  )}
+                  <span className="max-w-48 truncate">{chat.title}</span>
+                  {chat.status === "ready" && (
+                    <span className="text-[10px] text-emerald-500">✓</span>
+                  )}
+                  {chat.status === "failed" && (
+                    <span className="text-[10px] text-destructive">!</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(chat.id)}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted"
+                    disabled={chat.status === "compacting"}
                   >
-                    {chat.status === "compacting" ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <FilePlusIcon className="h-3 w-3 text-green-500" />
-                    )}
-                    <span className="max-w-48 truncate">{chat.title}</span>
-                    {chat.status === "ready" && (
-                      <span className="text-[10px] text-emerald-500">✓</span>
-                    )}
-                    {chat.status === "failed" && (
-                      <span className="text-[10px] text-destructive">!</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(chat.id)}
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-muted"
-                      disabled={chat.status === "compacting"}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <textarea
             placeholder="Let's learn some programming!"
@@ -514,6 +501,6 @@ export const LandingAIInput = memo(function LandingAIInput() {
           </Button>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 })

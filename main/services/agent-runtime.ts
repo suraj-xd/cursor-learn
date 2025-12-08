@@ -10,12 +10,15 @@ import {
   recordUsage,
 } from './agent-storage'
 import {
-  PROVIDER_API_BASES,
-  DEFAULT_MODELS,
-  getDefaultModel,
-  isSupportedProvider,
-  type ProviderId,
-} from './ai-config'
+  generate,
+  generateStream,
+  buildMessages,
+  type StreamCallback,
+  type GenerateOptions,
+} from './ai/helpers'
+import { getProvider, hasAnyApiKey, getModelForRole } from './ai/providers'
+import { parseModelId, getDefaultModel, type ProviderId } from './ai/models'
+import { buildTitlePrompt, buildSummarizationPrompt, CHAT_SYSTEM_PROMPT } from './ai/prompts'
 
 type CompletionResult = {
   message: MessageRecord
@@ -25,11 +28,14 @@ type TitleResult = {
   title: string
 }
 
-const TITLE_MODEL = DEFAULT_MODELS.openai.title
-const SUMMARIZER_MODEL_ID = DEFAULT_MODELS.openai.summarization
+export { type StreamCallback }
 
-const GEMINI_API_BASE = PROVIDER_API_BASES.google
-const ANTHROPIC_API_BASE = PROVIDER_API_BASES.anthropic
+function sanitizeModelId(modelId: string): { provider: ProviderId | null; model: string } {
+  if (!modelId) {
+    return { provider: null, model: '' }
+  }
+  return parseModelId(modelId)
+}
 
 export async function generateAssistantMessage(chatId: string): Promise<CompletionResult> {
   const chat = getChatById(chatId)
@@ -37,101 +43,52 @@ export async function generateAssistantMessage(chatId: string): Promise<Completi
     throw new Error('Chat not found')
   }
 
-  if (!isSupportedProvider(chat.provider)) {
-    throw new Error(`Provider "${chat.provider}" is not supported yet`)
+  if (!hasAnyApiKey()) {
+    throw new Error('No API key configured. Please add an API key in Settings → LLM.')
   }
 
-  if (chat.provider === 'openai') {
-    return runOpenAICompletion(chat)
-  }
-
-  if (chat.provider === 'google') {
-    return runGeminiCompletion(chat)
-  }
-
-  if (chat.provider === 'anthropic') {
-    return runAnthropicCompletion(chat)
-  }
-
-  throw new Error('No provider handler found')
-}
-
-function mapMessagesForProvider(messages: MessageRecord[]) {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }))
-}
-
-async function runOpenAICompletion(chat: ChatRecord): Promise<CompletionResult> {
-  const keyRecord = getApiKey('openai')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing OpenAI API key')
-  }
-
-  const messages = listMessagesForChat(chat.id)
+  const messages = listMessagesForChat(chatId)
   if (messages.length === 0) {
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('openai', 'chat')
+  const { provider: providerId, model: modelId } = sanitizeModelId(chat.modelId)
+  const provider = providerId ? getProvider(providerId) : null
+  
+  const coreMessages = buildMessages(
+    messages.map((m) => ({ role: m.role, content: m.content }))
+  )
 
-  const payload = {
-    model: modelId,
-    messages: mapMessagesForProvider(messages),
+  const options: GenerateOptions = {
+    messages: coreMessages,
     temperature: 0.4,
-  }
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${keyRecord.secret}`,
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`OpenAI error: ${errorMessage}`)
-  }
-
-  const data = await response.json()
-  const completion = data?.choices?.[0]?.message?.content?.trim()
-
-  if (!completion) {
-    throw new Error('OpenAI returned an empty response')
-  }
-
-  const inputTokens = data?.usage?.prompt_tokens || 0
-  const outputTokens = data?.usage?.completion_tokens || 0
-  const totalTokens = data?.usage?.total_tokens || inputTokens + outputTokens
-
-  recordUsage({
-    provider: 'openai',
-    model: modelId,
     feature: 'chat',
-    inputTokens,
-    outputTokens,
     chatId: chat.id,
-  })
+    maxRetries: 3,
+  }
+
+  if (provider && modelId) {
+    options.provider = providerId!
+    options.model = modelId
+  } else {
+    options.role = 'chat'
+  }
+
+  const result = await generate(options)
 
   const message = insertMessage({
     chatId: chat.id,
     role: 'assistant',
-    content: completion,
+    content: result.content,
     metadata: {
-      provider: 'openai',
-      model: payload.model,
+      provider: result.provider,
+      model: result.model,
     },
-    tokenUsage: totalTokens,
+    tokenUsage: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
   })
 
   return { message }
 }
-
-export type StreamCallback = (chunk: string, done: boolean) => void
 
 export async function generateAssistantMessageStreaming(
   chatId: string,
@@ -142,452 +99,48 @@ export async function generateAssistantMessageStreaming(
     throw new Error('Chat not found')
   }
 
-  if (!isSupportedProvider(chat.provider)) {
-    throw new Error(`Provider "${chat.provider}" is not supported yet`)
+  if (!hasAnyApiKey()) {
+    throw new Error('No API key configured. Please add an API key in Settings → LLM.')
   }
 
-  if (chat.provider === 'openai') {
-    return runOpenAICompletionStreaming(chat, onChunk)
-  }
-
-  if (chat.provider === 'google') {
-    return runGeminiCompletionStreaming(chat, onChunk)
-  }
-
-  if (chat.provider === 'anthropic') {
-    return runAnthropicCompletionStreaming(chat, onChunk)
-  }
-
-  throw new Error('No provider handler found')
-}
-
-async function runOpenAICompletionStreaming(
-  chat: ChatRecord,
-  onChunk: StreamCallback
-): Promise<CompletionResult> {
-  const keyRecord = getApiKey('openai')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing OpenAI API key')
-  }
-
-  const messages = listMessagesForChat(chat.id)
+  const messages = listMessagesForChat(chatId)
   if (messages.length === 0) {
     throw new Error('Conversation is empty')
   }
 
-  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('openai', 'chat')
+  const { provider: providerId, model: modelId } = sanitizeModelId(chat.modelId)
+  const provider = providerId ? getProvider(providerId) : null
+  
+  const coreMessages = buildMessages(
+    messages.map((m) => ({ role: m.role, content: m.content }))
+  )
 
-  const payload = {
-    model: modelId,
-    messages: mapMessagesForProvider(messages),
+  const options: GenerateOptions = {
+    messages: coreMessages,
     temperature: 0.4,
-    stream: true,
-  }
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${keyRecord.secret}`,
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`OpenAI error: ${errorMessage}`)
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('No response body')
-  }
-
-  const decoder = new TextDecoder()
-  let fullContent = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        if (data === '[DONE]') {
-          onChunk('', true)
-          continue
-        }
-
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.choices?.[0]?.delta?.content || ''
-          if (content) {
-            fullContent += content
-            onChunk(content, false)
-          }
-        } catch {
-          // ignore invalid JSON
-        }
-      }
-    }
-  }
-
-  onChunk('', true)
-
-  const message = insertMessage({
-    chatId: chat.id,
-    role: 'assistant',
-    content: fullContent.trim(),
-    metadata: {
-      provider: 'openai',
-      model: payload.model,
-    },
-    tokenUsage: 0,
-  })
-
-  return { message }
-}
-
-function mapMessagesForGemini(messages: MessageRecord[]) {
-  return messages.map((message) => ({
-    role: message.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: message.content }],
-  }))
-}
-
-async function runGeminiCompletion(chat: ChatRecord): Promise<CompletionResult> {
-  const keyRecord = getApiKey('google')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing Google API key')
-  }
-
-  const messages = listMessagesForChat(chat.id)
-  if (messages.length === 0) {
-    throw new Error('Conversation is empty')
-  }
-
-  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('google', 'chat')
-
-  const payload = {
-    contents: mapMessagesForGemini(messages),
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 8192,
-    },
-  }
-
-  const url = `${GEMINI_API_BASE}/models/${modelId}:generateContent?key=${keyRecord.secret}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`Gemini error: ${errorMessage}`)
-  }
-
-  const data = await response.json()
-  const completion = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-
-  if (!completion) {
-    throw new Error('Gemini returned an empty response')
-  }
-
-  const inputTokens = data?.usageMetadata?.promptTokenCount || 0
-  const outputTokens = data?.usageMetadata?.candidatesTokenCount || 0
-  const totalTokens = data?.usageMetadata?.totalTokenCount || inputTokens + outputTokens
-
-  recordUsage({
-    provider: 'google',
-    model: modelId,
     feature: 'chat',
-    inputTokens,
-    outputTokens,
     chatId: chat.id,
-  })
+    maxRetries: 3,
+  }
+
+  if (provider && modelId) {
+    options.provider = providerId!
+    options.model = modelId
+  } else {
+    options.role = 'chat'
+  }
+
+  const result = await generateStream(options, onChunk)
 
   const message = insertMessage({
     chatId: chat.id,
     role: 'assistant',
-    content: completion,
+    content: result.content,
     metadata: {
-      provider: 'google',
-      model: modelId,
+      provider: result.provider,
+      model: result.model,
     },
-    tokenUsage: totalTokens,
-  })
-
-  return { message }
-}
-
-async function runGeminiCompletionStreaming(
-  chat: ChatRecord,
-  onChunk: StreamCallback
-): Promise<CompletionResult> {
-  const keyRecord = getApiKey('google')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing Google API key')
-  }
-
-  const messages = listMessagesForChat(chat.id)
-  if (messages.length === 0) {
-    throw new Error('Conversation is empty')
-  }
-
-  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('google', 'chat')
-
-  const payload = {
-    contents: mapMessagesForGemini(messages),
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 8192,
-    },
-  }
-
-  const url = `${GEMINI_API_BASE}/models/${modelId}:streamGenerateContent?alt=sse&key=${keyRecord.secret}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`Gemini error: ${errorMessage}`)
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('No response body')
-  }
-
-  const decoder = new TextDecoder()
-  let fullContent = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
-          if (content) {
-            fullContent += content
-            onChunk(content, false)
-          }
-        } catch {
-          // ignore invalid JSON
-        }
-      }
-    }
-  }
-
-  onChunk('', true)
-
-  const message = insertMessage({
-    chatId: chat.id,
-    role: 'assistant',
-    content: fullContent.trim(),
-    metadata: {
-      provider: 'google',
-      model: modelId,
-    },
-    tokenUsage: 0,
-  })
-
-  return { message }
-}
-
-function mapMessagesForAnthropic(messages: MessageRecord[]) {
-  return messages
-    .filter((msg) => msg.role !== 'system')
-    .map((message) => ({
-      role: message.role === 'assistant' ? 'assistant' : 'user',
-      content: message.content,
-    }))
-}
-
-function getSystemPromptFromMessages(messages: MessageRecord[]): string | undefined {
-  const systemMsg = messages.find((m) => m.role === 'system')
-  return systemMsg?.content
-}
-
-async function runAnthropicCompletion(chat: ChatRecord): Promise<CompletionResult> {
-  const keyRecord = getApiKey('anthropic')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing Anthropic API key')
-  }
-
-  const messages = listMessagesForChat(chat.id)
-  if (messages.length === 0) {
-    throw new Error('Conversation is empty')
-  }
-
-  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('anthropic', 'chat')
-  const systemPrompt = getSystemPromptFromMessages(messages)
-
-  const payload: Record<string, unknown> = {
-    model: modelId,
-    messages: mapMessagesForAnthropic(messages),
-    max_tokens: 8192,
-    temperature: 0.4,
-  }
-
-  if (systemPrompt) {
-    payload.system = systemPrompt
-  }
-
-  const response = await fetch(`${ANTHROPIC_API_BASE}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': keyRecord.secret,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`Anthropic error: ${errorMessage}`)
-  }
-
-  const data = await response.json()
-  const completion = data?.content?.[0]?.text?.trim()
-
-  if (!completion) {
-    throw new Error('Anthropic returned an empty response')
-  }
-
-  const inputTokens = data?.usage?.input_tokens || 0
-  const outputTokens = data?.usage?.output_tokens || 0
-
-  recordUsage({
-    provider: 'anthropic',
-    model: modelId,
-    feature: 'chat',
-    inputTokens,
-    outputTokens,
-    chatId: chat.id,
-  })
-
-  const message = insertMessage({
-    chatId: chat.id,
-    role: 'assistant',
-    content: completion,
-    metadata: {
-      provider: 'anthropic',
-      model: modelId,
-    },
-    tokenUsage: inputTokens + outputTokens,
-  })
-
-  return { message }
-}
-
-async function runAnthropicCompletionStreaming(
-  chat: ChatRecord,
-  onChunk: StreamCallback
-): Promise<CompletionResult> {
-  const keyRecord = getApiKey('anthropic')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing Anthropic API key')
-  }
-
-  const messages = listMessagesForChat(chat.id)
-  if (messages.length === 0) {
-    throw new Error('Conversation is empty')
-  }
-
-  const modelId = sanitizeModelId(chat.modelId) || getDefaultModel('anthropic', 'chat')
-  const systemPrompt = getSystemPromptFromMessages(messages)
-
-  const payload: Record<string, unknown> = {
-    model: modelId,
-    messages: mapMessagesForAnthropic(messages),
-    max_tokens: 8192,
-    temperature: 0.4,
-    stream: true,
-  }
-
-  if (systemPrompt) {
-    payload.system = systemPrompt
-  }
-
-  const response = await fetch(`${ANTHROPIC_API_BASE}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': keyRecord.secret,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`Anthropic error: ${errorMessage}`)
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('No response body')
-  }
-
-  const decoder = new TextDecoder()
-  let fullContent = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-            const content = parsed.delta.text
-            fullContent += content
-            onChunk(content, false)
-          }
-        } catch {
-          // ignore invalid JSON
-        }
-      }
-    }
-  }
-
-  onChunk('', true)
-
-  const message = insertMessage({
-    chatId: chat.id,
-    role: 'assistant',
-    content: fullContent.trim(),
-    metadata: {
-      provider: 'anthropic',
-      model: modelId,
-    },
-    tokenUsage: 0,
+    tokenUsage: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
   })
 
   return { message }
@@ -604,42 +157,19 @@ export async function runGeminiPrompt(
   prompt: string,
   options: GeminiCompletionOptions = {}
 ): Promise<{ content: string; tokenCount: number }> {
-  const keyRecord = getApiKey('google')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing Google API key')
-  }
-
-  const model = options.model || getDefaultModel('google', 'chat')
-  const payload: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: options.temperature ?? 0.2,
-      maxOutputTokens: options.maxOutputTokens ?? 8192,
-    },
-  }
-
-  if (options.systemInstruction) {
-    payload.systemInstruction = { parts: [{ text: options.systemInstruction }] }
-  }
-
-  const url = `${GEMINI_API_BASE}/models/${model}:generateContent?key=${keyRecord.secret}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+  const result = await generate({
+    prompt,
+    system: options.systemInstruction,
+    temperature: options.temperature ?? 0.2,
+    maxTokens: options.maxOutputTokens ?? 8192,
+    role: 'chat',
+    maxRetries: 3,
   })
 
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`Gemini error: ${errorMessage}`)
+  return {
+    content: result.content,
+    tokenCount: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
   }
-
-  const data = await response.json()
-  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
-  const tokenCount = data?.usageMetadata?.totalTokenCount || 0
-
-  return { content, tokenCount }
 }
 
 export async function runGeminiPromptStreaming(
@@ -647,91 +177,22 @@ export async function runGeminiPromptStreaming(
   onChunk: StreamCallback,
   options: GeminiCompletionOptions = {}
 ): Promise<{ content: string; tokenCount: number }> {
-  const keyRecord = getApiKey('google')
-  if (!keyRecord?.secret) {
-    throw new Error('Missing Google API key')
-  }
-
-  const model = options.model || getDefaultModel('google', 'chat')
-  const payload: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
+  const result = await generateStream(
+    {
+      prompt,
+      system: options.systemInstruction,
       temperature: options.temperature ?? 0.2,
-      maxOutputTokens: options.maxOutputTokens ?? 8192,
+      maxTokens: options.maxOutputTokens ?? 8192,
+      role: 'chat',
+      maxRetries: 3,
     },
+    onChunk
+  )
+
+  return {
+    content: result.content,
+    tokenCount: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
   }
-
-  if (options.systemInstruction) {
-    payload.systemInstruction = { parts: [{ text: options.systemInstruction }] }
-  }
-
-  const url = `${GEMINI_API_BASE}/models/${model}:streamGenerateContent?alt=sse&key=${keyRecord.secret}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const errorBody = await safeJson(response)
-    const errorMessage = errorBody?.error?.message || response.statusText
-    throw new Error(`Gemini error: ${errorMessage}`)
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('No response body')
-  }
-
-  const decoder = new TextDecoder()
-  let fullContent = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n').filter((line) => line.trim() !== '')
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
-          if (content) {
-            fullContent += content
-            onChunk(content, false)
-          }
-        } catch {
-          // ignore invalid JSON
-        }
-      }
-    }
-  }
-
-  onChunk('', true)
-
-  return { content: fullContent.trim(), tokenCount: 0 }
-}
-
-async function safeJson(response: Response): Promise<any | null> {
-  try {
-    return await response.json()
-  } catch {
-    return null
-  }
-}
-
-function sanitizeModelId(modelId: string) {
-  if (!modelId) {
-    return null
-  }
-  if (modelId.includes(':')) {
-    const [, raw] = modelId.split(':')
-    return raw ?? modelId
-  }
-  return modelId
 }
 
 export async function generateChatTitle(chatId: string, userMessage: string): Promise<TitleResult> {
@@ -740,58 +201,32 @@ export async function generateChatTitle(chatId: string, userMessage: string): Pr
     throw new Error('Chat not found')
   }
 
-  const keyRecord = getApiKey('openai')
-  if (!keyRecord?.secret) {
+  if (!hasAnyApiKey()) {
     const fallback = extractTitleFromMessage(userMessage)
     updateChatTitle({ chatId, title: fallback })
     return { title: fallback }
   }
 
-  const prompt = `Generate a very short title (max 6 words) for a chat that starts with this message. Return ONLY the title, no quotes, no explanation.
-
-Message: "${userMessage.slice(0, 500)}"`
-
-  const payload = {
-    model: TITLE_MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-    max_tokens: 30,
-  }
+  const prompt = buildTitlePrompt(userMessage)
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${keyRecord.secret}`,
-      },
-      body: JSON.stringify(payload),
+    const result = await generate({
+      prompt,
+      temperature: 0.3,
+      maxTokens: 30,
+      role: 'title',
+      feature: 'title',
+      chatId,
+      maxRetries: 2,
     })
 
-    if (!response.ok) {
-      const fallback = extractTitleFromMessage(userMessage)
-      updateChatTitle({ chatId, title: fallback })
-      return { title: fallback }
-    }
-
-    const data = await response.json()
-    let title = data?.choices?.[0]?.message?.content?.trim() || ''
-    
+    let title = result.content.trim()
     title = title.replace(/^["']|["']$/g, '')
     title = title.replace(/\.$/g, '')
-    
+
     if (!title || title.length > 80) {
       title = extractTitleFromMessage(userMessage)
     }
-
-    recordUsage({
-      provider: 'openai',
-      model: TITLE_MODEL,
-      feature: 'title',
-      inputTokens: data?.usage?.prompt_tokens || 0,
-      outputTokens: data?.usage?.completion_tokens || 0,
-      chatId,
-    })
 
     updateChatTitle({ chatId, title })
     return { title }
@@ -920,7 +355,7 @@ export async function prepareChatContext(chatId: string): Promise<ChatContext> {
     }
   }
 
-  const keyRecord = getApiKey('openai')
+  const hasApiKeyAvailable = hasAnyApiKey()
   let summaryRecord: ContextSummaryRecord | null = getContextSummary(chatId)
   let summaryGeneratedNow = false
 
@@ -932,13 +367,13 @@ export async function prepareChatContext(chatId: string): Promise<ChatContext> {
 
   const shouldRefreshSummary =
     !summaryRecord ||
-    (summaryRecord.strategy === 'truncated' && Boolean(keyRecord?.secret)) ||
+    (summaryRecord.strategy === 'truncated' && hasApiKeyAvailable) ||
     uncoveredMessages.length > SUMMARY_MESSAGE_THRESHOLD
 
   if (shouldRefreshSummary) {
-    const strategy: ContextSummaryRecord['strategy'] = keyRecord?.secret ? 'summarized' : 'truncated'
-    const summaryText = keyRecord?.secret
-      ? await summarizeChat(messages, chat.title, keyRecord.secret)
+    const strategy: ContextSummaryRecord['strategy'] = hasApiKeyAvailable ? 'summarized' : 'truncated'
+    const summaryText = hasApiKeyAvailable
+      ? await summarizeChat(messages, chat.title)
       : buildTruncatedSummary(messages, chat.title)
     const summaryTokenEstimate = estimateTokens(summaryText)
     summaryRecord = upsertContextSummary({
@@ -998,66 +433,32 @@ export async function prepareChatContext(chatId: string): Promise<ChatContext> {
 
 async function summarizeChat(
   messages: MessageRecord[],
-  title: string,
-  apiKey: string
+  title: string
 ): Promise<string> {
   const conversationText = messages
     .map((m) => `[${m.role}]: ${m.content}`)
     .join('\n\n')
 
-  const prompt = `Summarize this AI chat conversation comprehensively. Preserve all important details, decisions, code snippets, and context. The summary will be used as context for another conversation.
-
-Chat Title: "${title}"
-
-Conversation:
-${conversationText.slice(0, 12000)}
-
-Provide a structured summary that includes:
-1. Main topic/goal of the conversation
-2. Key decisions made
-3. Important code or technical details (preserve exact snippets if any)
-4. Current state/progress
-5. Any unresolved questions`
-
-  const payload = {
-    model: SUMMARIZER_MODEL_ID,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
-    max_tokens: 2000,
-  }
+  const prompt = buildSummarizationPrompt(title, conversationText)
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(payload),
+    const result = await generate({
+      prompt,
+      temperature: 0.2,
+      maxTokens: 2000,
+      role: 'summarization',
+      feature: 'summarization',
+      maxRetries: 2,
     })
 
-    if (!response.ok) {
-      return `[Summary unavailable - ${messages.length} messages about "${title}"]`
-    }
-
-    const data = await response.json()
-    const summary = data?.choices?.[0]?.message?.content?.trim()
+    const summary = result.content.trim()
     
     if (!summary) {
       return `[Summary unavailable - ${messages.length} messages about "${title}"]`
     }
-
-    recordUsage({
-      provider: 'openai',
-      model: SUMMARIZER_MODEL_ID,
-      feature: 'summarization',
-      inputTokens: data?.usage?.prompt_tokens || 0,
-      outputTokens: data?.usage?.completion_tokens || 0,
-    })
 
     return `[SUMMARIZED CHAT: "${title}"]\n${summary}`
   } catch {
     return `[Summary unavailable - ${messages.length} messages about "${title}"]`
   }
 }
-

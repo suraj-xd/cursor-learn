@@ -1,6 +1,7 @@
 "use client"
 
 import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
 import type { ChatTab } from '@/types/workspace'
 import { workspaceService, type WorkspaceProject } from '@/services/workspace'
 
@@ -150,9 +151,34 @@ export const useWorkspaceDetailStore = create<WorkspaceDetailState>((set, get) =
   }
 }))
 
+const selectedChatCache = new Map<string, ChatTab>()
+
 export const selectSelectedChat = (state: WorkspaceDetailState): ChatTab | undefined => {
-  return state.tabs.find(tab => tab.id === state.selectedId)
+  if (!state.selectedId) return undefined
+  
+  const cacheKey = `${state.workspaceId}:${state.selectedId}`
+  const cached = selectedChatCache.get(cacheKey)
+  
+  if (cached && state.tabs.some(t => t.id === cached.id)) {
+    return cached
+  }
+  
+  const found = state.tabs.find(tab => tab.id === state.selectedId)
+  if (found) {
+    selectedChatCache.set(cacheKey, found)
+    if (selectedChatCache.size > 50) {
+      const firstKey = selectedChatCache.keys().next().value
+      selectedChatCache.delete(firstKey)
+    }
+  }
+  
+  return found
 }
+
+export const selectTabs = (state: WorkspaceDetailState) => state.tabs
+export const selectSelectedId = (state: WorkspaceDetailState) => state.selectedId
+export const selectIsLoading = (state: WorkspaceDetailState) => state.isLoading
+export const selectProjectName = (state: WorkspaceDetailState) => state.projectName
 
 export const workspaceDetailActions = {
   initialize: useWorkspaceDetailStore.getState().initialize,

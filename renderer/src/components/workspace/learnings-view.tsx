@@ -8,11 +8,11 @@ import {
   Plus,
   Loader2,
   AlertCircle,
-  Sparkles,
   BookOpen,
   MoreVertical,
   RefreshCw,
 } from "lucide-react"
+import { AILoader } from "@/components/ui/ai-loader"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -291,34 +291,24 @@ export function LearningsView({
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
           {isGenerating && filteredExercises.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="relative mb-4">
-                <Sparkles className="h-8 w-8 text-primary animate-pulse" />
-              </div>
-              <p className="text-sm font-medium">Generating exercises...</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Creating practice exercises from your conversation
-              </p>
+            <div className="flex flex-col items-center justify-center py-12">
+              <AILoader variant="compact" />
             </div>
           ) : filteredExercises.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <BookOpen className="h-8 w-8 text-muted-foreground/50 mb-4" />
-              <p className="text-sm text-muted-foreground">
-                No {activeTab === "interactive" ? "interactive" : activeTab === "mcq" ? "multiple choice" : "true/false"} exercises yet
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+              <h3 className="text-sm font-departure uppercase text-muted-foreground">Learnings</h3>
+              <p className="text-xs text-muted-foreground/70 max-w-[200px]">
+                Practice exercises from your conversation
               </p>
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-4 gap-2"
+                className="gap-2 font-departure"
                 onClick={handleOpenAddDialog}
                 disabled={isGenerating}
               >
-                {isGenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                Generate Exercises
+                <Plus className="h-3 w-3" />
+                Generate
               </Button>
             </div>
           ) : (

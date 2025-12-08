@@ -12,19 +12,43 @@
   resolved "https://registry.yarnpkg.com/@acemir/cssom/-/cssom-0.9.23.tgz#9930458ccace533c597e1cd90c200edc336ed80a"
   integrity sha512-2kJ1HxBKzPLbmhZpxBiTZggjtgCwKg1ma5RHShxvd6zgqhDEdEkzpiwe7jLkI2p2BrZvFCXIihdoMkl1H39VnA==
 
-"@ai-sdk/gateway@2.0.15":
-  version "2.0.15"
-  resolved "https://registry.yarnpkg.com/@ai-sdk/gateway/-/gateway-2.0.15.tgz#16db3b2fa8305a6b639d056ff4269127949cb9d5"
-  integrity sha512-i1YVKzC1dg9LGvt+GthhD7NlRhz9J4+ZRj3KELU14IZ/MHPsOBiFeEoCCIDLR+3tqT8/+5nIsK3eZ7DFRfMfdw==
+"@ai-sdk/anthropic@^2.0.53":
+  version "2.0.53"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/anthropic/-/anthropic-2.0.53.tgz#bf361ef25bb3f6018fb09824ac88007c9a0ed67d"
+  integrity sha512-ih7NV+OFSNWZCF+tYYD7ovvvM+gv7TRKQblpVohg2ipIwC9Y0TirzocJVREzZa/v9luxUwFbsPji++DUDWWxsg==
   dependencies:
     "@ai-sdk/provider" "2.0.0"
-    "@ai-sdk/provider-utils" "3.0.17"
+    "@ai-sdk/provider-utils" "3.0.18"
+
+"@ai-sdk/gateway@2.0.18":
+  version "2.0.18"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/gateway/-/gateway-2.0.18.tgz#7e81bdedddb7363af2c38d2cf7f34ac2d5e5eaa7"
+  integrity sha512-sDQcW+6ck2m0pTIHW6BPHD7S125WD3qNkx/B8sEzJp/hurocmJ5Cni0ybExg6sQMGo+fr/GWOwpHF1cmCdg5rQ==
+  dependencies:
+    "@ai-sdk/provider" "2.0.0"
+    "@ai-sdk/provider-utils" "3.0.18"
     "@vercel/oidc" "3.0.5"
 
-"@ai-sdk/provider-utils@3.0.17":
-  version "3.0.17"
-  resolved "https://registry.yarnpkg.com/@ai-sdk/provider-utils/-/provider-utils-3.0.17.tgz#2f3d0be398d3f165efe8dd252b63aea6ac3896d1"
-  integrity sha512-TR3Gs4I3Tym4Ll+EPdzRdvo/rc8Js6c4nVhFLuvGLX/Y4V9ZcQMa/HTiYsHEgmYrf1zVi6Q145UEZUfleOwOjw==
+"@ai-sdk/google@^2.0.44":
+  version "2.0.44"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/google/-/google-2.0.44.tgz#f7a20b97691c68a7fd639fad6ebd4423042fe479"
+  integrity sha512-c5dck36FjqiVoeeMJQLTEmUheoURcGTU/nBT6iJu8/nZiKFT/y8pD85KMDRB7RerRYaaQOtslR2d6/5PditiRw==
+  dependencies:
+    "@ai-sdk/provider" "2.0.0"
+    "@ai-sdk/provider-utils" "3.0.18"
+
+"@ai-sdk/openai@^2.0.80":
+  version "2.0.80"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/openai/-/openai-2.0.80.tgz#8ef191866e5bf451a8195c2eb9ef7a0e3021541e"
+  integrity sha512-tNHuraF11db+8xJEDBoU9E3vMcpnHFKRhnLQ3DQX2LnEzfPB9DksZ8rE+yVuDN1WRW9cm2OWAhgHFgVKs7ICuw==
+  dependencies:
+    "@ai-sdk/provider" "2.0.0"
+    "@ai-sdk/provider-utils" "3.0.18"
+
+"@ai-sdk/provider-utils@3.0.18":
+  version "3.0.18"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/provider-utils/-/provider-utils-3.0.18.tgz#fc7757ad7eb48a48ce1976da3025f0b9215b1aff"
+  integrity sha512-ypv1xXMsgGcNKUP+hglKqtdDuMg68nWHucPPAhIENrbFAI+xCHiqPVN8Zllxyv1TNZwGWUghPxJXU+Mqps0YRQ==
   dependencies:
     "@ai-sdk/provider" "2.0.0"
     "@standard-schema/spec" "^1.0.0"
@@ -4208,14 +4232,14 @@ agent-base@^7.1.0, agent-base@^7.1.2:
   resolved "https://registry.yarnpkg.com/agent-base/-/agent-base-7.1.4.tgz#e3cd76d4c548ee895d3c3fd8dc1f6c5b9032e7a8"
   integrity sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==
 
-ai@^5.0.101:
-  version "5.0.101"
-  resolved "https://registry.yarnpkg.com/ai/-/ai-5.0.101.tgz#aea90e8503192fb1fc75d94c6440e203d5bc5911"
-  integrity sha512-/P4fgs2PGYTBaZi192YkPikOudsl9vccA65F7J7LvoNTOoP5kh1yAsJPsKAy6FXU32bAngai7ft1UDyC3u7z5g==
+ai@^5.0.108:
+  version "5.0.108"
+  resolved "https://registry.yarnpkg.com/ai/-/ai-5.0.108.tgz#b1b6e66b705baabcf98370336b03ebaacbf1874f"
+  integrity sha512-Jex3Lb7V41NNpuqJHKgrwoU6BCLHdI1Pg4qb4GJH4jRIDRXUBySJErHjyN4oTCwbiYCeb/8II9EnqSRPq9EifA==
   dependencies:
-    "@ai-sdk/gateway" "2.0.15"
+    "@ai-sdk/gateway" "2.0.18"
     "@ai-sdk/provider" "2.0.0"
-    "@ai-sdk/provider-utils" "3.0.17"
+    "@ai-sdk/provider-utils" "3.0.18"
     "@opentelemetry/api" "1.9.0"
 
 ajv-formats@^2.1.1:
@@ -7963,6 +7987,11 @@ jsonfile@^6.0.1:
     universalify "^2.0.0"
   optionalDependencies:
     graceful-fs "^4.1.6"
+
+jsonrepair@^3.13.1:
+  version "3.13.1"
+  resolved "https://registry.yarnpkg.com/jsonrepair/-/jsonrepair-3.13.1.tgz#d5f0de4878646e03a516ed325a72adb29491d9b2"
+  integrity sha512-WJeiE0jGfxYmtLwBTEk8+y/mYcaleyLXWaqp5bJu0/ZTSeG0KQq/wWQ8pmnkKenEdN6pdnn6QtcoSUkbqDHWNw==
 
 jspdf@^2.5.2:
   version "2.5.2"

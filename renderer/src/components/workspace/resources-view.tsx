@@ -30,6 +30,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react"
+import { AILoader } from "@/components/ui/ai-loader"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -544,34 +545,24 @@ export function ResourcesView({
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
           {isGenerating && resources.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="relative mb-4">
-                <Sparkles className="h-8 w-8 text-primary animate-pulse" />
-              </div>
-              <p className="text-sm font-medium">Analyzing conversation...</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Understanding your problem and finding relevant resources
-              </p>
+            <div className="flex flex-col items-center justify-center py-12">
+              <AILoader variant="compact" />
             </div>
           ) : resources.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <BookOpen className="h-8 w-8 text-muted-foreground/50 mb-4" />
-              <p className="text-sm text-muted-foreground">
-                No resources discovered yet
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+              <h3 className="text-sm font-departure uppercase text-muted-foreground">Resources</h3>
+              <p className="text-xs text-muted-foreground/70 max-w-[200px]">
+                Discover learning resources from your conversation
               </p>
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-4 gap-2"
+                className="gap-2 font-departure"
                 onClick={handleGenerate}
                 disabled={isGenerating}
               >
-                {isGenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Find Resources
+                <Sparkles className="h-3 w-3" />
+                Find
               </Button>
             </div>
           ) : (

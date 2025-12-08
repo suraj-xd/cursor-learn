@@ -17,7 +17,6 @@ import {
   Loader2,
   Sparkles,
   Clock,
-  AlertCircle,
   CheckCircle2,
   MoreVertical,
   RefreshCw,
@@ -26,6 +25,7 @@ import {
   FileText,
   Key,
 } from 'lucide-react'
+import { AILoader } from '@/components/ui/ai-loader'
 import { LanguageIcon } from '@/lib/language-icons'
 import { overviewIpc, type ConversationOverview, type OverviewSession, type OverviewProgress } from '@/lib/agents/overview-ipc'
 import { useSettingsStore } from '@/store/settings'
@@ -83,44 +83,24 @@ function NoApiKeyState() {
 }
 
 function EmptyState({ onStart, isStarting }: { onStart: () => void; isStarting: boolean }) {
+  if (isStarting) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <AILoader variant="compact" />
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col items-center justify-center p-8">
-      <div className="max-w-md text-center space-y-6">
-        <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-          <Sparkles className="w-8 h-8 text-primary" />
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">Generate Overview</h3>
-          <p className="text-sm text-muted-foreground">
-            Get an AI-powered comprehensive overview of this conversation with diagrams, code snippets, and insights.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2 justify-center">
-            <Target className="w-4 h-4" />
-            <span>Architecture diagrams & flowcharts</span>
-          </div>
-          <div className="flex items-center gap-2 justify-center">
-            <FileText className="w-4 h-4" />
-            <span>Key code snippets & file changes</span>
-          </div>
-          <div className="flex items-center gap-2 justify-center">
-            <Sparkles className="w-4 h-4" />
-            <span>Decisions, learnings & insights</span>
-          </div>
-        </div>
-        <Button onClick={onStart} disabled={isStarting} className="gap-2">
-          {isStarting ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Starting...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              Generate Overview
-            </>
-          )}
+      <div className="text-center space-y-4">
+        <h3 className="text-sm font-departure uppercase text-muted-foreground">Overview</h3>
+        <p className="text-xs text-muted-foreground/70 max-w-[200px]">
+          AI-powered summary with diagrams & insights
+        </p>
+        <Button onClick={onStart} variant="outline" size="sm" className="gap-2 font-departure">
+          <Sparkles className="w-3 h-3" />
+          Generate
         </Button>
       </div>
     </div>
@@ -134,27 +114,22 @@ function ProcessingState({
   progress: OverviewProgress | null
   onCancel: () => void
 }) {
-  const stepLabel = progress?.currentStep ? stepLabels[progress.currentStep] : 'Processing...'
+  const stepLabel = progress?.currentStep ? stepLabels[progress.currentStep] : null
   const progressPercent = progress?.progress ?? 0
 
   return (
     <div className="h-full flex flex-col items-center justify-center p-8">
       <div className="max-w-md w-full space-y-6">
-        <div className="text-center space-y-2">
-          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
-          <h3 className="text-lg font-semibold">Generating overview...</h3>
-          <p className="text-sm text-muted-foreground">{stepLabel}</p>
-        </div>
+        <AILoader description={stepLabel ?? undefined} />
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Progress</span>
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
             <span>{progressPercent}%</span>
           </div>
-          <Progress value={progressPercent} className="h-2" />
+          <Progress value={progressPercent} className="h-1.5" />
         </div>
         <div className="flex justify-center">
-          <Button variant="outline" size="sm" onClick={onCancel}>
-            Cancel
+          <Button variant="ghost" size="sm" onClick={onCancel} className="text-xs font-mono">
+            [cancel]
           </Button>
         </div>
       </div>
@@ -171,19 +146,7 @@ function ErrorState({
 }) {
   return (
     <div className="h-full flex flex-col items-center justify-center p-8">
-      <div className="max-w-md text-center space-y-6">
-        <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
-          <AlertCircle className="w-8 h-8 text-destructive" />
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">Generation failed</h3>
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </div>
-        <Button onClick={onRetry} variant="outline" className="gap-2">
-          <RefreshCw className="w-4 h-4" />
-          Try Again
-        </Button>
-      </div>
+      <AILoader error={error} onRetry={onRetry} />
     </div>
   )
 }
@@ -556,7 +519,7 @@ export const OverviewView = memo(function OverviewView({
   if (viewState === 'loading') {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <AILoader variant="compact" />
       </div>
     )
   }

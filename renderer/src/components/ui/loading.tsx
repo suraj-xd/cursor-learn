@@ -1,9 +1,9 @@
-import { ShiningText } from "../comman/shinning-text";
+import { AILoader } from "./ai-loader"
 
-  export function Loading({ message = "Loading..." }: { message?: string }) {
+export function Loading({ message }: { message?: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-      <ShiningText text={message} />
+      <AILoader description={message} />
     </div>
   )
 } 

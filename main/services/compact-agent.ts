@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { runGeminiPrompt, runGeminiPromptStreaming, type StreamCallback } from './agent-runtime'
+import { generate, type StreamCallback } from './ai/helpers'
+import {
+  buildCompactMapPrompt,
+  buildCompactReducePrompt,
+  buildCompactFullContextPrompt,
+  buildSuggestionsPrompt,
+} from './ai/prompts'
 import {
   createCompactedChat,
   createCompactSession,
@@ -15,7 +21,6 @@ import {
   type CompactSessionRecord,
 } from './agent-storage'
 
-const DEFAULT_MODEL = 'gemini-2.0-flash'
 const TOKENS_PER_CHAR = 3.5
 const CHUNK_TARGET_TOKENS = 8000
 const FULL_CONTEXT_THRESHOLD = 100_000
@@ -77,10 +82,6 @@ function findCodeBlockBoundaries(text: string): { start: number; end: number }[]
   return boundaries
 }
 
-function isInsideCodeBlock(position: number, boundaries: { start: number; end: number }[]): boolean {
-  return boundaries.some((b) => position >= b.start && position < b.end)
-}
-
 function chunkConversation(bubbles: ConversationBubble[]): ChunkInfo[] {
   const chunks: ChunkInfo[] = []
   let currentChunk: ConversationBubble[] = []
@@ -130,123 +131,6 @@ function chunkConversation(bubbles: ConversationBubble[]): ChunkInfo[] {
   return chunks
 }
 
-const MAP_PROMPT = `You are analyzing a segment of a coding conversation between a user and an AI assistant.
-
-Extract and preserve the following information in a structured format:
-
-## GOALS
-What is the user trying to achieve in this segment?
-
-## CONTEXT
-- Files, technologies, and setup mentioned
-- Any imports, dependencies, or configurations
-
-## CODE
-Preserve ALL code snippets exactly as written. Do not summarize or paraphrase any code.
-Format each code block with its language and purpose:
-
-\`\`\`language
-// Purpose: description
-code here
-\`\`\`
-
-## DECISIONS
-Technical choices made and their rationale
-
-## PROBLEMS & SOLUTIONS
-Issues encountered and how they were resolved
-
-## STATE
-Current progress at the end of this segment
-
----
-CONVERSATION SEGMENT:
-`
-
-const REDUCE_PROMPT = `You are combining multiple summaries of a coding conversation into one comprehensive report.
-
-Maintain chronological flow and preserve ALL:
-- Code snippets (keep exact formatting, never paraphrase code)
-- Technical decisions with rationale
-- Problem-solution pairs
-- File/function references
-
-Create a single comprehensive report with this structure:
-
-# Conversation Summary
-
-## Overview
-2-3 sentences summarizing the entire conversation
-
-## Goals & Objectives
-What the user was trying to achieve
-
-## Technical Context
-- Files involved
-- Technologies/stack used
-- Setup and configuration
-
-## Development Progress
-Chronological summary of what was accomplished
-
-## Code Artifacts
-ALL significant code from the conversation, preserved exactly
-
-## Decisions & Rationale
-Key technical choices and why they were made
-
-## Problems & Solutions
-Issues encountered and their resolutions
-
-## Current State & Next Steps
-Where things stand and what remains to be done
-
----
-SEGMENT SUMMARIES TO COMBINE:
-`
-
-const FULL_CONTEXT_PROMPT = `You are creating a comprehensive summary of a coding conversation between a user and an AI assistant.
-
-Preserve ALL:
-- Code snippets exactly as written (never paraphrase code)
-- Technical decisions with rationale
-- Problem-solution pairs
-- File/function references
-
-Create a comprehensive report with this structure:
-
-# Conversation Summary
-
-## Overview
-2-3 sentences summarizing the entire conversation
-
-## Goals & Objectives
-What the user was trying to achieve
-
-## Technical Context
-- Files involved
-- Technologies/stack used
-- Setup and configuration
-
-## Development Progress
-Chronological summary of what was accomplished
-
-## Code Artifacts
-ALL significant code from the conversation, preserved exactly
-
-## Decisions & Rationale
-Key technical choices and why they were made
-
-## Problems & Solutions
-Issues encountered and their resolutions
-
-## Current State & Next Steps
-Where things stand and what remains to be done
-
----
-CONVERSATION:
-`
-
 function createLog(
   level: CompactSessionLog['level'],
   message: string,
@@ -263,23 +147,25 @@ async function processFullContext(
   appendCompactSessionLog(sessionId, createLog('info', 'Processing with full context strategy'))
 
   const conversationText = formatBubblesAsText(conversation.bubbles)
-  const prompt = `${FULL_CONTEXT_PROMPT}\nTitle: "${conversation.title}"\n\n${conversationText}`
+  const prompt = buildCompactFullContextPrompt(conversation.title, conversationText)
 
   updateCompactSession({ id: sessionId, currentStep: 'finalizing', progress: 50 })
   const session = getCompactSession(sessionId)
   if (session && onProgress) onProgress(session)
 
-  appendCompactSessionLog(sessionId, createLog('info', 'Sending to Gemini for summarization'))
+  appendCompactSessionLog(sessionId, createLog('info', 'Sending to AI for summarization'))
 
-  const { content } = await runGeminiPrompt(prompt, {
-    model: DEFAULT_MODEL,
+  const result = await generate({
+    prompt,
     temperature: 0.2,
-    maxOutputTokens: 16384,
+    maxTokens: 16384,
+    role: 'compact',
+    maxRetries: 3,
   })
 
-  appendCompactSessionLog(sessionId, createLog('info', 'Received summary from Gemini'))
+  appendCompactSessionLog(sessionId, createLog('info', `Received summary from ${result.provider}`))
 
-  return content
+  return result.content
 }
 
 async function processChunkedParallel(
@@ -304,7 +190,12 @@ async function processChunkedParallel(
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]
-    const chunkPrompt = `${MAP_PROMPT}\nConversation Title: "${conversation.title}"\nSegment ${i + 1} of ${chunks.length} (messages ${chunk.startBubble + 1}-${chunk.endBubble + 1})\n\n${chunk.content}`
+    const chunkPrompt = buildCompactMapPrompt(
+      conversation.title,
+      i + 1,
+      chunks.length,
+      chunk.content
+    )
 
     appendCompactSessionLog(
       sessionId,
@@ -313,13 +204,15 @@ async function processChunkedParallel(
       })
     )
 
-    const { content } = await runGeminiPrompt(chunkPrompt, {
-      model: DEFAULT_MODEL,
+    const result = await generate({
+      prompt: chunkPrompt,
       temperature: 0.2,
-      maxOutputTokens: 4096,
+      maxTokens: 4096,
+      role: 'compact',
+      maxRetries: 3,
     })
 
-    chunkSummaries.push(`### Segment ${i + 1}\n${content}`)
+    chunkSummaries.push(`### Segment ${i + 1}\n${result.content}`)
 
     const progress = Math.round(((i + 1) / chunks.length) * 70) + 10
     updateCompactSession({ id: sessionId, chunksProcessed: i + 1, progress })
@@ -330,17 +223,19 @@ async function processChunkedParallel(
   appendCompactSessionLog(sessionId, createLog('info', 'All chunks processed, starting reduce phase'))
   updateCompactSession({ id: sessionId, currentStep: 'reducing', progress: 80 })
 
-  const reducePrompt = `${REDUCE_PROMPT}\nOriginal Title: "${conversation.title}"\n\n${chunkSummaries.join('\n\n---\n\n')}`
+  const reducePrompt = buildCompactReducePrompt(conversation.title, chunkSummaries.join('\n\n---\n\n'))
 
-  const { content: finalSummary } = await runGeminiPrompt(reducePrompt, {
-    model: DEFAULT_MODEL,
+  const result = await generate({
+    prompt: reducePrompt,
     temperature: 0.2,
-    maxOutputTokens: 16384,
+    maxTokens: 16384,
+    role: 'compact',
+    maxRetries: 3,
   })
 
   appendCompactSessionLog(sessionId, createLog('info', 'Reduce phase complete'))
 
-  return finalSummary
+  return result.content
 }
 
 async function processHierarchical(
@@ -410,6 +305,7 @@ export async function startCompactSession(
 
     let compactedContent: string
     let chunkCount = 1
+    let modelUsed = 'ai-sdk'
 
     if (strategy === 'full_context') {
       compactedContent = await processFullContext(session.id, conversation, onProgress)
@@ -445,7 +341,7 @@ export async function startCompactSession(
       originalTokenCount: totalTokens,
       compactedTokenCount: compactedTokens,
       compressionRatio,
-      modelUsed: DEFAULT_MODEL,
+      modelUsed,
       strategyUsed: strategy,
       chunkCount,
       metadata: {
@@ -523,30 +419,6 @@ export function getActiveSession(
   return getActiveCompactSession(workspaceId, conversationId)
 }
 
-const SUGGESTIONS_PROMPT = `Generate 4-5 SHORT, punchy questions about this coding conversation.
-
-Rules:
-- MAX 10-15 words per question
-- Be curious, direct, slightly unhinged
-- Focus on the juicy tech stuff: architecture, patterns, gotchas, trade-offs
-- Questions should make the user go "ooh, good question"
-- No boring generic questions
-
-Return ONLY a JSON array with "question" and "icon" fields.
-Icons: "code", "lightbulb", "puzzle", "book", "rocket", "target"
-
-Good examples:
-[
-  {"question": "Why not just use Redux here?", "icon": "puzzle"},
-  {"question": "What breaks if we remove that useEffect?", "icon": "code"},
-  {"question": "Is this pattern overkill for the use case?", "icon": "lightbulb"},
-  {"question": "What's the worst edge case hiding here?", "icon": "target"}
-]
-
----
-CONVERSATION SUMMARY:
-`
-
 export type SuggestedQuestion = {
   question: string
   icon: 'code' | 'lightbulb' | 'puzzle' | 'book' | 'rocket' | 'target'
@@ -556,15 +428,17 @@ export async function generateSuggestedQuestions(
   compactedContent: string
 ): Promise<SuggestedQuestion[]> {
   try {
-    const prompt = `${SUGGESTIONS_PROMPT}${compactedContent}`
+    const prompt = buildSuggestionsPrompt(compactedContent)
 
-    const { content } = await runGeminiPrompt(prompt, {
-      model: DEFAULT_MODEL,
+    const result = await generate({
+      prompt,
       temperature: 0.7,
-      maxOutputTokens: 1024,
+      maxTokens: 1024,
+      role: 'chat',
+      maxRetries: 2,
     })
 
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
+    const jsonMatch = result.content.match(/\[[\s\S]*\]/)
     if (!jsonMatch) {
       return []
     }
@@ -578,4 +452,3 @@ export async function generateSuggestedQuestions(
 }
 
 export { type ConversationInput, type ProcessingResult }
-

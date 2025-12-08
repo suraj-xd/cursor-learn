@@ -1,4 +1,8 @@
-import { runGeminiPrompt } from './agent-runtime'
+import { z } from 'zod'
+import { jsonrepair } from 'jsonrepair'
+import { generate, generateWithSchema } from './ai/helpers'
+import { hasAnyApiKey } from './ai/providers'
+import { OVERVIEW_PROMPT } from './ai/prompts'
 import {
   createConversationOverview,
   createOverviewSession,
@@ -6,12 +10,9 @@ import {
   getOverviewByConversation,
   getActiveOverviewSession,
   getOverviewSession,
-  getApiKey,
   type ConversationOverviewRecord,
   type OverviewSessionRecord,
 } from './agent-storage'
-
-const DEFAULT_MODEL = 'gemini-2.0-flash'
 
 type ConversationBubble = {
   type: 'user' | 'ai'
@@ -44,99 +45,98 @@ function formatBubblesAsText(bubbles: ConversationBubble[]): string {
     .join('\n\n')
 }
 
-const OVERVIEW_PROMPT = `You are creating a comprehensive, well-researched overview of a coding conversation. This overview helps developers understand and learn from the discussion.
-
-Your output must be VALID JSON with this structure:
-{
-  "title": "Concise title capturing the main goal (max 60 chars)",
-  "summary": "1-2 sentence high-level overview of what was accomplished",
-  "topics": ["Topic1", "Topic2", "Topic3"],
-  "content": "Full markdown content here..."
-}
-
-## Guidelines
-
-### title
-- Capture the main goal, feature, or problem being addressed
-- Be specific, not generic (e.g., "Building Real-time Chat with WebSockets" not "Chat Feature")
-
-### summary  
-- 1-2 sentences only
-- Focus on outcome: what was built, solved, or learned
-
-### topics
-- 3-5 in-depth topics only (not a laundry list)
-- Focus on core technologies and concepts actually discussed
-- Examples: "React Server Components", "WebSocket Architecture", "State Management with Zustand"
-
-### content (IMPORTANT - This is the main body)
-Generate rich, well-structured markdown. You have full freedom to include whatever is relevant:
-
-**Use these markdown features as appropriate:**
-
-1. **Mermaid diagrams** - for architecture, flows, or processes:
-\`\`\`mermaid
-flowchart LR
-    A[User] --> B[API]
-    B --> C[Database]
-\`\`\`
-
-2. **Tables** - for file changes, decisions, comparisons:
-| File | Change | Purpose |
-|------|--------|---------|
-| api.ts | Created | API endpoints |
-
-3. **Code blocks** - for key snippets worth remembering:
-\`\`\`typescript
-// Important pattern used
-const example = ...
-\`\`\`
-
-4. **Headers** - organize naturally with ## and ###
-
-5. **Lists** - for steps, outcomes, or learnings
-
-**Adapt to conversation type:**
-- Feature build → Show what was built, architecture, key code
-- Debugging → Show the problem, investigation, solution
-- Q&A/Learning → Focus on concepts explained, examples given
-- Refactoring → Show before/after, decisions made
-
-**Always include (when relevant):**
-- What was built or accomplished
-- Key decisions and why
-- Important code patterns or snippets
-- Files created/modified
-- Gotchas or things to remember
-
-Return ONLY valid JSON. Escape any quotes in the content field properly.
+function buildOverviewPrompt(title: string, conversationText: string): string {
+  return `${OVERVIEW_PROMPT}
 
 ---
-CONVERSATION TITLE: "{{TITLE}}"
+CONVERSATION TITLE: "${title}"
 
 CONVERSATION:
-{{CONTENT}}
-`
+${conversationText.slice(0, 80000)}`
+}
+
+const overviewSchema = z.object({
+  title: z.string().min(1).max(100),
+  summary: z.string().min(1).max(600),
+  topics: z.array(z.string().min(1).max(120)).max(10).default([]),
+  content: z.string().min(1),
+})
+
+function normalizeOverviewData(data: z.infer<typeof overviewSchema>): OverviewData {
+  return {
+    title: data.title.slice(0, 100),
+    summary: data.summary.slice(0, 600),
+    topics: (data.topics || []).slice(0, 8).map((t) => t.trim()).filter(Boolean),
+    content: data.content,
+  }
+}
 
 function parseOverviewResponse(content: string): OverviewData | null {
-  try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return null
-    
-    const parsed = JSON.parse(jsonMatch[0])
-    
-    if (!parsed.title || !parsed.summary || !parsed.content) {
-      return null
+  const tryParse = (input: string): unknown | null => {
+    try {
+      return JSON.parse(input)
+    } catch {
+      try {
+        return JSON.parse(jsonrepair(input))
+      } catch {
+        return null
+      }
     }
-    
-    return {
-      title: String(parsed.title).slice(0, 100),
-      summary: String(parsed.summary).slice(0, 500),
-      topics: (parsed.topics || []).slice(0, 8).map((t: unknown) => String(t)),
-      content: String(parsed.content),
-    }
-  } catch {
+  }
+
+  const jsonMatch = content.match(/\{[\s\S]*\}/)
+  const candidate = jsonMatch?.[0] ?? content
+  const parsed = tryParse(candidate)
+  if (!parsed) return null
+
+  if (!(parsed as { title?: unknown }).title || !(parsed as { summary?: unknown }).summary || !(parsed as { content?: unknown }).content) {
     return null
+  }
+
+  return normalizeOverviewData({
+    title: String((parsed as { title: unknown }).title),
+    summary: String((parsed as { summary: unknown }).summary),
+    topics: ((parsed as { topics?: unknown[] }).topics || []).map((t: unknown) => String(t)),
+    content: String((parsed as { content: unknown }).content),
+  })
+}
+
+async function generateOverviewData(prompt: string): Promise<{ data: OverviewData; provider: string; model: string }> {
+  try {
+    const result = await generateWithSchema({
+      prompt,
+      temperature: 0.3,
+      maxTokens: 8192,
+      role: 'overview',
+      schema: overviewSchema,
+      schemaName: 'ConversationOverview',
+      maxRetries: 3,
+    })
+
+    return {
+      data: normalizeOverviewData(result.content),
+      provider: result.provider,
+      model: result.model,
+    }
+  } catch (structuredError) {
+    const fallbackResult = await generate({
+      prompt,
+      temperature: 0.4,
+      maxTokens: 8192,
+      role: 'overview',
+      maxRetries: 3,
+    })
+
+    const parsed = parseOverviewResponse(fallbackResult.content)
+    if (!parsed) {
+      throw structuredError instanceof Error ? structuredError : new Error('Failed to parse overview response from AI')
+    }
+
+    return {
+      data: parsed,
+      provider: fallbackResult.provider,
+      model: fallbackResult.model,
+    }
   }
 }
 
@@ -149,9 +149,8 @@ export async function startOverviewSession(
     throw new Error('An overview session is already in progress for this conversation')
   }
 
-  const apiKey = getApiKey('google')
-  if (!apiKey?.secret) {
-    throw new Error('Google API key not configured. Please add your API key in settings.')
+  if (!hasAnyApiKey()) {
+    throw new Error('No API key configured. Please add your API key in settings.')
   }
 
   const session = createOverviewSession({
@@ -174,9 +173,7 @@ export async function startOverviewSession(
       if (s) onProgress(s)
     }
 
-    const prompt = OVERVIEW_PROMPT
-      .replace('{{TITLE}}', conversation.title)
-      .replace('{{CONTENT}}', conversationText.slice(0, 80000))
+    const prompt = buildOverviewPrompt(conversation.title, conversationText)
 
     updateOverviewSession({ id: session.id, currentStep: 'generating', progress: 50 })
     if (onProgress) {
@@ -184,11 +181,7 @@ export async function startOverviewSession(
       if (s) onProgress(s)
     }
 
-    const { content } = await runGeminiPrompt(prompt, {
-      model: DEFAULT_MODEL,
-      temperature: 0.4,
-      maxOutputTokens: 8192,
-    })
+    const overviewResult = await generateOverviewData(prompt)
 
     updateOverviewSession({ id: session.id, currentStep: 'finalizing', progress: 80 })
     if (onProgress) {
@@ -196,20 +189,14 @@ export async function startOverviewSession(
       if (s) onProgress(s)
     }
 
-    const overviewData = parseOverviewResponse(content)
-    
-    if (!overviewData) {
-      throw new Error('Failed to parse overview response from AI')
-    }
-
     const overview = createConversationOverview({
       workspaceId: conversation.workspaceId,
       conversationId: conversation.conversationId,
-      title: overviewData.title,
-      summary: overviewData.summary,
-      topics: overviewData.topics,
-      content: overviewData.content,
-      modelUsed: DEFAULT_MODEL,
+      title: overviewResult.data.title,
+      summary: overviewResult.data.summary,
+      topics: overviewResult.data.topics,
+      content: overviewResult.data.content,
+      modelUsed: `${overviewResult.provider}:${overviewResult.model}`,
       metadata: {
         bubbleCount: conversation.bubbles.length,
         originalTitle: conversation.title,
@@ -273,8 +260,7 @@ export function getActiveSession(
 }
 
 export function checkApiKeyAvailable(): boolean {
-  const apiKey = getApiKey('google')
-  return Boolean(apiKey?.secret)
+  return hasAnyApiKey()
 }
 
 export { type ConversationInput, type ProcessingResult, type OverviewData }
