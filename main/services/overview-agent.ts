@@ -56,10 +56,10 @@ ${conversationText.slice(0, 80000)}`
 }
 
 const overviewSchema = z.object({
-  title: z.string().min(1).max(100),
-  summary: z.string().min(1).max(600),
-  topics: z.array(z.string().min(1).max(120)).max(10).default([]),
-  content: z.string().min(1),
+  title: z.string().min(1).max(200).default('Overview'),
+  summary: z.string().min(1).max(1000).default('Summary unavailable'),
+  topics: z.array(z.string().max(150)).max(15).default([]),
+  content: z.string().min(1).default('Content unavailable'),
 })
 
 function normalizeOverviewData(data: z.infer<typeof overviewSchema>): OverviewData {
@@ -84,24 +84,35 @@ function parseOverviewResponse(content: string): OverviewData | null {
     }
   }
 
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
-  const candidate = jsonMatch?.[0] ?? content
+  let cleanContent = content.trim()
+  cleanContent = cleanContent.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '')
+  
+  const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
+  const candidate = jsonMatch?.[0] ?? cleanContent
   const parsed = tryParse(candidate)
   if (!parsed) return null
 
-  if (!(parsed as { title?: unknown }).title || !(parsed as { summary?: unknown }).summary || !(parsed as { content?: unknown }).content) {
+  const obj = parsed as Record<string, unknown>
+  
+  const hasTitle = typeof obj.title === 'string' && obj.title.length > 0
+  const hasSummary = typeof obj.summary === 'string' && obj.summary.length > 0
+  const hasContent = typeof obj.content === 'string' && obj.content.length > 0
+  
+  if (!hasTitle && !hasSummary && !hasContent) {
     return null
   }
 
   return normalizeOverviewData({
-    title: String((parsed as { title: unknown }).title),
-    summary: String((parsed as { summary: unknown }).summary),
-    topics: ((parsed as { topics?: unknown[] }).topics || []).map((t: unknown) => String(t)),
-    content: String((parsed as { content: unknown }).content),
+    title: hasTitle ? String(obj.title) : 'Overview',
+    summary: hasSummary ? String(obj.summary) : 'Summary of conversation',
+    topics: Array.isArray(obj.topics) ? obj.topics.map((t: unknown) => String(t)).filter(Boolean) : [],
+    content: hasContent ? String(obj.content) : String(obj.summary || 'No detailed content available'),
   })
 }
 
 async function generateOverviewData(prompt: string): Promise<{ data: OverviewData; provider: string; model: string }> {
+  let lastError: Error | null = null
+  
   try {
     const result = await generateWithSchema({
       prompt,
@@ -111,6 +122,7 @@ async function generateOverviewData(prompt: string): Promise<{ data: OverviewDat
       schema: overviewSchema,
       schemaName: 'ConversationOverview',
       maxRetries: 3,
+      fallbackToText: true,
     })
 
     return {
@@ -119,8 +131,13 @@ async function generateOverviewData(prompt: string): Promise<{ data: OverviewDat
       model: result.model,
     }
   } catch (structuredError) {
+    lastError = structuredError instanceof Error ? structuredError : new Error('Structured generation failed')
+    console.warn('Structured overview generation failed, trying text fallback:', lastError.message)
+  }
+  
+  try {
     const fallbackResult = await generate({
-      prompt,
+      prompt: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON with these exact keys: title, summary, topics (array), content. No markdown code blocks.`,
       temperature: 0.4,
       maxTokens: 8192,
       role: 'overview',
@@ -128,16 +145,18 @@ async function generateOverviewData(prompt: string): Promise<{ data: OverviewDat
     })
 
     const parsed = parseOverviewResponse(fallbackResult.content)
-    if (!parsed) {
-      throw structuredError instanceof Error ? structuredError : new Error('Failed to parse overview response from AI')
+    if (parsed) {
+      return {
+        data: parsed,
+        provider: fallbackResult.provider,
+        model: fallbackResult.model,
+      }
     }
-
-    return {
-      data: parsed,
-      provider: fallbackResult.provider,
-      model: fallbackResult.model,
-    }
+  } catch (fallbackError) {
+    console.warn('Text fallback also failed:', fallbackError instanceof Error ? fallbackError.message : 'Unknown error')
   }
+
+  throw lastError ?? new Error('Failed to generate overview: no valid response from AI')
 }
 
 export async function startOverviewSession(

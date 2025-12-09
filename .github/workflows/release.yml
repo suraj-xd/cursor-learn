@@ -9,11 +9,9 @@ on:
         type: string
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  build-mac:
+    timeout-minutes: 30
+    runs-on: macos-latest
     permissions:
       contents: write
 
@@ -33,43 +31,63 @@ jobs:
       - name: Update version
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
-      - name: Build
+      - name: Build and Upload to S3
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: yarn build
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: yarn build:publish
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+  build-windows:
+    timeout-minutes: 30
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: release-${{ matrix.os }}
-          path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.blockmap
-            dist/*.exe
-            dist/*.msi
-          if-no-files-found: ignore
+          node-version: 20
+          cache: 'yarn'
 
-  release:
-    needs: build
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Update version
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Build and Upload to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: yarn build:publish
+
+  create-release:
+    needs: [build-mac, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           draft: false
           prerelease: false
-          files: dist/*
+          body: |
+            ## Downloads
+            
+            - **macOS**: https://cursor-learn-releases.s3.amazonaws.com/Cursor%20Learn.dmg
+            - **Windows**: https://cursor-learn-releases.s3.amazonaws.com/Cursor%20Learn.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

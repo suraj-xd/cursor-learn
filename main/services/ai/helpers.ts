@@ -1,8 +1,8 @@
-import { generateText, generateObject, streamText, type CoreMessage, type LanguageModelUsage } from 'ai'
+import { generateText, generateObject, streamText, type CoreMessage } from 'ai'
 import { jsonrepair } from 'jsonrepair'
 import type { z } from 'zod'
 import { getProvider, getAvailableProviders, getModelForRole, type ProviderInstance } from './providers'
-import { type ProviderId, type ModelRole, getDefaultModel, calculateCost, parseModelId } from './models'
+import { type ProviderId, type ModelRole, getDefaultModel } from './models'
 import { recordUsage, type UsageFeature } from '../agent-storage'
 
 export type GenerateOptions = {
@@ -20,9 +20,15 @@ export type GenerateOptions = {
   retryDelayMs?: number
 }
 
+export type TokenUsage = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
 export type GenerateResult<T = string> = {
   content: T
-  usage: LanguageModelUsage
+  usage: TokenUsage
   provider: ProviderId
   model: string
 }
@@ -150,29 +156,37 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
   
   const attemptGenerate = async (provider: ProviderInstance, model: string): Promise<GenerateResult> => {
-    const result = await generateText({
+    const baseParams = {
       model: provider.createModel(model),
       system: options.system,
-      messages: options.messages,
-      prompt: options.prompt,
       temperature: options.temperature ?? 0.4,
-      maxTokens: options.maxTokens,
-    })
+      maxOutputTokens: options.maxTokens,
+    }
+    
+    const result = options.messages
+      ? await generateText({ ...baseParams, messages: options.messages })
+      : await generateText({ ...baseParams, prompt: options.prompt ?? '' })
+    
+    const usage: TokenUsage = {
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+      totalTokens: result.usage?.totalTokens ?? 0,
+    }
     
     if (options.feature) {
       recordUsage({
         provider: provider.provider,
         model,
         feature: options.feature,
-        inputTokens: result.usage?.promptTokens ?? 0,
-        outputTokens: result.usage?.completionTokens ?? 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
         chatId: options.chatId,
       })
     }
     
     return {
       content: result.text,
-      usage: result.usage,
+      usage,
       provider: provider.provider,
       model,
     }
@@ -217,34 +231,88 @@ export async function generateWithSchema<T>(
   const fallbackToText = options.fallbackToText ?? true
   
   const attemptGenerate = async (provider: ProviderInstance, model: string): Promise<GenerateResult<T>> => {
-    const result = await generateObject({
+    const baseParams = {
       model: provider.createModel(model),
+      output: 'object' as const,
       schema: options.schema,
       schemaName: options.schemaName,
       system: options.system,
-      messages: options.messages,
-      prompt: options.prompt,
       temperature: options.temperature ?? 0.2,
-      maxTokens: options.maxTokens,
-    })
+      maxOutputTokens: options.maxTokens,
+    }
+    
+    const result = options.messages
+      ? await generateObject({ ...baseParams, messages: options.messages })
+      : await generateObject({ ...baseParams, prompt: options.prompt ?? '' })
+    
+    const usage: TokenUsage = {
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+      totalTokens: result.usage?.totalTokens ?? 0,
+    }
     
     if (options.feature) {
       recordUsage({
         provider: provider.provider,
         model,
         feature: options.feature,
-        inputTokens: result.usage?.promptTokens ?? 0,
-        outputTokens: result.usage?.completionTokens ?? 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
         chatId: options.chatId,
       })
     }
     
     return {
-      content: result.object,
-      usage: result.usage,
+      content: result.object as T,
+      usage,
       provider: provider.provider,
       model,
     }
+  }
+  
+  const attemptTextFallback = async (provider: ProviderInstance, model: string): Promise<GenerateResult<T> | null> => {
+    try {
+      const { schema, schemaName: _schemaName, fallbackToText: _fallback, ...rest } = options
+      const baseParams = {
+        model: provider.createModel(model),
+        system: rest.system,
+        temperature: rest.temperature ?? 0.3,
+        maxOutputTokens: rest.maxTokens,
+      }
+      
+      const textResult = rest.messages
+        ? await generateText({ ...baseParams, messages: rest.messages })
+        : await generateText({ ...baseParams, prompt: rest.prompt ?? '' })
+      
+      const structured = extractStructuredFromText(textResult.text, schema)
+      if (structured) {
+        const usage: TokenUsage = {
+          inputTokens: textResult.usage?.inputTokens ?? 0,
+          outputTokens: textResult.usage?.outputTokens ?? 0,
+          totalTokens: textResult.usage?.totalTokens ?? 0,
+        }
+        
+        if (options.feature) {
+          recordUsage({
+            provider: provider.provider,
+            model,
+            feature: options.feature,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            chatId: options.chatId,
+          })
+        }
+        return {
+          content: structured,
+          usage,
+          provider: provider.provider,
+          model,
+        }
+      }
+    } catch {
+      // Text fallback failed, continue
+    }
+    return null
   }
   
   try {
@@ -254,6 +322,13 @@ export async function generateWithSchema<T>(
       retryDelayMs
     )
   } catch (primaryError) {
+    if (fallbackToText) {
+      const textFallbackResult = await attemptTextFallback(instance, modelId)
+      if (textFallbackResult) {
+        return textFallbackResult
+      }
+    }
+    
     const fallbacks = getFallbackProviders(instance.provider)
     
     for (const fallback of fallbacks) {
@@ -264,6 +339,12 @@ export async function generateWithSchema<T>(
           retryDelayMs
         )
       } catch {
+        if (fallbackToText) {
+          const textFallbackResult = await attemptTextFallback(fallback.instance, fallback.modelId)
+          if (textFallbackResult) {
+            return textFallbackResult
+          }
+        }
         continue
       }
     }
@@ -277,7 +358,8 @@ export async function generateWithSchema<T>(
 
     const structured = extractStructuredFromText(textResult.content as unknown as string, schema)
     if (!structured) {
-      throw primaryError
+      const errorMsg = primaryError instanceof Error ? primaryError.message : 'Unknown error'
+      throw new Error(`Failed to generate structured output: ${errorMsg}`)
     }
 
     return {
@@ -303,14 +385,16 @@ export async function generateStream(
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
   
   const attemptStream = async (provider: ProviderInstance, model: string): Promise<GenerateResult> => {
-    const result = streamText({
+    const baseParams = {
       model: provider.createModel(model),
       system: options.system,
-      messages: options.messages,
-      prompt: options.prompt,
       temperature: options.temperature ?? 0.4,
-      maxTokens: options.maxTokens,
-    })
+      maxOutputTokens: options.maxTokens,
+    }
+    
+    const result = options.messages
+      ? streamText({ ...baseParams, messages: options.messages })
+      : streamText({ ...baseParams, prompt: options.prompt ?? '' })
     
     let fullContent = ''
     
@@ -321,15 +405,20 @@ export async function generateStream(
     
     onChunk('', true)
     
-    const usage = await result.usage
+    const rawUsage = await result.usage
+    const usage: TokenUsage = {
+      inputTokens: rawUsage?.inputTokens ?? 0,
+      outputTokens: rawUsage?.outputTokens ?? 0,
+      totalTokens: rawUsage?.totalTokens ?? 0,
+    }
     
     if (options.feature) {
       recordUsage({
         provider: provider.provider,
         model,
         feature: options.feature,
-        inputTokens: usage?.promptTokens ?? 0,
-        outputTokens: usage?.completionTokens ?? 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
         chatId: options.chatId,
       })
     }

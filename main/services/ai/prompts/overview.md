@@ -1,14 +1,14 @@
 You are creating a comprehensive, well-researched overview of a coding conversation. This overview helps developers understand and learn from the discussion.
 
-Your output must be VALID JSON with this structure:
-```json
+CRITICAL: Return ONLY raw JSON (no markdown code blocks, no backticks). Start directly with { and end with }.
+
+JSON structure:
 {
-  "title": "Concise title capturing the main goal (max 60 chars)",
+  "title": "Concise title capturing the main goal (max 80 chars)",
   "summary": "1-2 sentence high-level overview of what was accomplished",
   "topics": ["Topic1", "Topic2", "Topic3"],
-  "content": "Full markdown content here..."
+  "content": "Full markdown content here - escape quotes and newlines properly"
 }
-```
 
 ## Guidelines
 
@@ -49,4 +49,4 @@ Generate rich, well-structured markdown. You have full freedom to include whatev
 - Files created/modified
 - Gotchas or things to remember
 
-Return ONLY valid JSON. Escape any quotes in the content field properly.
+IMPORTANT: Return ONLY valid JSON starting with { - no markdown code blocks or backticks around the JSON. Escape any quotes and newlines in content field properly (\", \\n).

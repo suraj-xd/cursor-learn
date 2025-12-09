@@ -11,3 +11,9 @@ next-env.d.ts
 # build
 /app
 dist
+
+# Code signing (sensitive)
+certificate.p12
+*.p12
+package-mac-signed.sh
+.env

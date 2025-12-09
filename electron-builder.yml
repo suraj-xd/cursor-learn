@@ -13,14 +13,35 @@ files:
       - resources/**
 asarUnpack:
   - node_modules/better-sqlite3/build/Release/*.node
+afterSign: build/notarize.js
 mac:
+  category: public.app-category.developer-tools
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
+  artifactName: ${productName}.${ext}
+  type: distribution
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  gatekeeperAssess: false
+  notarize: false
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
 win:
   target:
     - nsis
+  artifactName: ${productName}.${ext}
 publish:
-  provider: github
-  owner: suraj-xd
-  repo: cursor-learn
+  provider: s3
+  bucket: cursor-learn-releases

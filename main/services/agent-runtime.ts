@@ -84,7 +84,7 @@ export async function generateAssistantMessage(chatId: string): Promise<Completi
       provider: result.provider,
       model: result.model,
     },
-    tokenUsage: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+    tokenUsage: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
   })
 
   return { message }
@@ -140,7 +140,7 @@ export async function generateAssistantMessageStreaming(
       provider: result.provider,
       model: result.model,
     },
-    tokenUsage: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+    tokenUsage: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
   })
 
   return { message }
@@ -168,7 +168,7 @@ export async function runGeminiPrompt(
 
   return {
     content: result.content,
-    tokenCount: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+    tokenCount: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
   }
 }
 
@@ -191,7 +191,7 @@ export async function runGeminiPromptStreaming(
 
   return {
     content: result.content,
-    tokenCount: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+    tokenCount: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
   }
 }
 
