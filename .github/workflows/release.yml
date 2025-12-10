@@ -31,6 +31,14 @@ jobs:
       - name: Update version
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
+      - name: Create lightweight tag for publish
+        run: |
+          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ github.event.inputs.version }} already exists"
+          else
+            git tag "v${{ github.event.inputs.version }}"
+          fi
+
       - name: Build and Upload to S3
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -71,6 +79,14 @@ jobs:
 
       - name: Update version
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Create lightweight tag for publish
+        run: |
+          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ github.event.inputs.version }} already exists"
+          else
+            git tag "v${{ github.event.inputs.version }}"
+          fi
 
       - name: Build and Upload to S3
         env:
