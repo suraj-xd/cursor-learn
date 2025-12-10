@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { Database as BetterSqliteDatabase, Statement } from 'better-sqlite3'
 import { getAgentDatabase } from './database'
+import type { ParsedConversation, DialogTurn } from './types/dialog-turn'
+import type { OverviewStructure, OverviewSection, DiagramSpec } from './types/overview-structure'
+import type { LearningConcept } from './types/learning-concept'
 
 type Timestamped = { createdAt: number; updatedAt: number }
 
@@ -97,6 +100,28 @@ const TIMESTAMP = () => Date.now()
 
 const serialize = (value: unknown) => JSON.stringify(value ?? null)
 const deserialize = <T>(value: string | null) => (value ? (JSON.parse(value) as T) : null)
+
+const EMPTY_PARSED_STATS = {
+  totalTurns: 0,
+  userTurns: 0,
+  aiTurns: 0,
+  totalTokens: 0,
+  codeBlockCount: 0,
+  fileCount: 0,
+  errorCount: 0,
+  decisionCount: 0,
+  highImportanceTurns: 0,
+}
+
+const EMPTY_OVERVIEW_METADATA = {
+  totalTurns: 0,
+  processedTurns: 0,
+  truncatedTurns: 0,
+  tokenBudgetUsed: 0,
+  generationTimeMs: 0,
+  modelUsed: '',
+  structureVersion: 1,
+}
 
 const dbStatement = <T extends Statement>(builder: (db: BetterSqliteDatabase) => T) => {
   const db = getAgentDatabase()
@@ -1668,4 +1693,507 @@ export const deleteResources = (workspaceId: string, conversationId: string): bo
   )
   const result = stmt.run(workspaceId, conversationId)
   return result.changes > 0
+}
+
+// Parsed conversations
+export const saveParsedConversation = (parsed: ParsedConversation): ParsedConversation => {
+  const db = getAgentDatabase()
+  const now = TIMESTAMP()
+
+  const getExisting = db.prepare(
+    `SELECT id FROM parsed_conversations WHERE workspace_id = ? AND conversation_id = ?`
+  )
+
+  const insertParsed = db.prepare(
+    `INSERT INTO parsed_conversations (id, workspace_id, conversation_id, title, stats, parsed_at)
+     VALUES (@id, @workspaceId, @conversationId, @title, @stats, @parsedAt)`
+  )
+
+  const updateParsed = db.prepare(
+    `UPDATE parsed_conversations SET title = @title, stats = @stats, parsed_at = @parsedAt
+     WHERE id = @id`
+  )
+
+  const deleteTurns = db.prepare(`DELETE FROM dialog_turns WHERE parsed_conversation_id = ?`)
+
+  const insertTurn = db.prepare(
+    `INSERT INTO dialog_turns (
+       id, parsed_conversation_id, turn_index, role, content, timestamp,
+       code_blocks, file_refs, error_mentions, decisions,
+       importance, importance_score, token_count,
+       has_substantial_code, is_key_decision, is_problem_resolution
+     ) VALUES (
+       @id, @parsedConversationId, @turnIndex, @role, @content, @timestamp,
+       @codeBlocks, @fileRefs, @errorMentions, @decisions,
+       @importance, @importanceScore, @tokenCount,
+       @hasSubstantialCode, @isKeyDecision, @isProblemResolution
+     )`
+  )
+
+  let usedId = parsed.id
+
+  const tx = db.transaction(() => {
+    const existing = getExisting.get(parsed.workspaceId, parsed.conversationId) as { id: string } | undefined
+
+    if (existing) {
+      usedId = existing.id
+      deleteTurns.run(usedId)
+      updateParsed.run({
+        id: usedId,
+        title: parsed.title,
+        stats: serialize(parsed.stats),
+        parsedAt: parsed.parsedAt ?? now,
+      })
+    } else {
+      insertParsed.run({
+        id: parsed.id,
+        workspaceId: parsed.workspaceId,
+        conversationId: parsed.conversationId,
+        title: parsed.title,
+        stats: serialize(parsed.stats),
+        parsedAt: parsed.parsedAt ?? now,
+      })
+    }
+
+    for (const turn of parsed.turns) {
+      insertTurn.run({
+        id: turn.id,
+        parsedConversationId: usedId,
+        turnIndex: turn.index,
+        role: turn.role,
+        content: turn.content,
+        timestamp: turn.timestamp,
+        codeBlocks: serialize(turn.codeBlocks),
+        fileRefs: serialize(turn.fileRefs),
+        errorMentions: serialize(turn.errorMentions),
+        decisions: serialize(turn.decisions),
+        importance: turn.importance,
+        importanceScore: turn.importanceScore,
+        tokenCount: turn.tokenCount,
+        hasSubstantialCode: turn.hasSubstantialCode ? 1 : 0,
+        isKeyDecision: turn.isKeyDecision ? 1 : 0,
+        isProblemResolution: turn.isProblemResolution ? 1 : 0,
+      })
+    }
+  })
+
+  tx()
+  return { ...parsed, id: usedId }
+}
+
+export const getParsedConversation = (
+  workspaceId: string,
+  conversationId: string
+): ParsedConversation | null => {
+  const db = getAgentDatabase()
+  const parsedStmt = db.prepare(
+    `SELECT id, workspace_id as workspaceId, conversation_id as conversationId, title, stats, parsed_at as parsedAt
+     FROM parsed_conversations
+     WHERE workspace_id = ? AND conversation_id = ?`
+  )
+
+  const parsedRow = parsedStmt.get(workspaceId, conversationId) as
+    | { id: string; workspaceId: string; conversationId: string; title: string; stats: string; parsedAt: number }
+    | undefined
+
+  if (!parsedRow) return null
+
+  const turnsStmt = db.prepare(
+    `SELECT
+       id, parsed_conversation_id as parsedConversationId, turn_index as turnIndex, role, content, timestamp,
+       code_blocks as codeBlocks, file_refs as fileRefs, error_mentions as errorMentions, decisions,
+       importance, importance_score as importanceScore, token_count as tokenCount,
+       has_substantial_code as hasSubstantialCode, is_key_decision as isKeyDecision, is_problem_resolution as isProblemResolution
+     FROM dialog_turns
+     WHERE parsed_conversation_id = ?
+     ORDER BY turn_index ASC`
+  )
+
+  const turnRows = turnsStmt.all(parsedRow.id) as Array<{
+    id: string
+    turnIndex: number
+    role: DialogTurn['role']
+    content: string
+    timestamp: number
+    codeBlocks: string | null
+    fileRefs: string | null
+    errorMentions: string | null
+    decisions: string | null
+    importance: DialogTurn['importance']
+    importanceScore: number
+    tokenCount: number
+    hasSubstantialCode: number
+    isKeyDecision: number
+    isProblemResolution: number
+  }>
+
+  const turns: DialogTurn[] = turnRows.map((row) => ({
+    id: row.id,
+    index: row.turnIndex,
+    role: row.role,
+    content: row.content,
+    timestamp: row.timestamp,
+    codeBlocks: deserialize(row.codeBlocks) ?? [],
+    fileRefs: deserialize(row.fileRefs) ?? [],
+    errorMentions: deserialize(row.errorMentions) ?? [],
+    decisions: deserialize(row.decisions) ?? [],
+    importance: row.importance,
+    importanceScore: row.importanceScore,
+    tokenCount: row.tokenCount,
+    hasSubstantialCode: !!row.hasSubstantialCode,
+    isKeyDecision: !!row.isKeyDecision,
+    isProblemResolution: !!row.isProblemResolution,
+  }))
+
+  return {
+    id: parsedRow.id,
+    workspaceId: parsedRow.workspaceId,
+    conversationId: parsedRow.conversationId,
+    title: parsedRow.title,
+    turns,
+    stats: (deserialize<ParsedConversation['stats']>(parsedRow.stats) ?? EMPTY_PARSED_STATS),
+    parsedAt: parsedRow.parsedAt,
+  }
+}
+
+// Overview structures
+export const saveOverviewStructure = (structure: OverviewStructure): OverviewStructure => {
+  const db = getAgentDatabase()
+  const now = TIMESTAMP()
+
+  const getExisting = db.prepare(
+    `SELECT id FROM overview_structures WHERE workspace_id = ? AND conversation_id = ?`
+  )
+
+  const insertStructure = db.prepare(
+    `INSERT INTO overview_structures (
+       id, workspace_id, conversation_id, title, summary, metadata, created_at, updated_at
+     ) VALUES (
+       @id, @workspaceId, @conversationId, @title, @summary, @metadata, @createdAt, @updatedAt
+     )`
+  )
+
+  const updateStructure = db.prepare(
+    `UPDATE overview_structures SET title = @title, summary = @summary, metadata = @metadata, updated_at = @updatedAt
+     WHERE id = @id`
+  )
+
+  const deleteSections = db.prepare(`DELETE FROM overview_sections WHERE structure_id = ?`)
+  const deleteDiagrams = db.prepare(
+    `DELETE FROM overview_diagrams WHERE section_id IN (SELECT id FROM overview_sections WHERE structure_id = ?)`
+  )
+
+  const insertSection = db.prepare(
+    `INSERT INTO overview_sections (
+       id, structure_id, order_index, type, title, description, content,
+       code_snippets, citations, importance, relevant_turn_ids, token_count, generated_at
+     ) VALUES (
+       @id, @structureId, @orderIndex, @type, @title, @description, @content,
+       @codeSnippets, @citations, @importance, @relevantTurnIds, @tokenCount, @generatedAt
+     )`
+  )
+
+  const insertDiagram = db.prepare(
+    `INSERT INTO overview_diagrams (
+       id, section_id, type, mermaid_code, caption, cached_svg, created_at
+     ) VALUES (
+       @id, @sectionId, @type, @mermaidCode, @caption, @cachedSvg, @createdAt
+     )`
+  )
+
+  let usedId = structure.id
+
+  const tx = db.transaction(() => {
+    const existing = getExisting.get(structure.workspaceId, structure.conversationId) as { id: string } | undefined
+
+    if (existing) {
+      usedId = existing.id
+      deleteDiagrams.run(usedId)
+      deleteSections.run(usedId)
+      updateStructure.run({
+        id: usedId,
+        title: structure.title,
+        summary: structure.summary,
+        metadata: serialize(structure.metadata),
+        updatedAt: now,
+      })
+    } else {
+      insertStructure.run({
+        id: structure.id,
+        workspaceId: structure.workspaceId,
+        conversationId: structure.conversationId,
+        title: structure.title,
+        summary: structure.summary,
+        metadata: serialize(structure.metadata),
+        createdAt: structure.createdAt ?? now,
+        updatedAt: now,
+      })
+    }
+
+    for (const section of structure.sections) {
+      insertSection.run({
+        id: section.id,
+        structureId: usedId,
+        orderIndex: section.order,
+        type: section.type,
+        title: section.title,
+        description: section.description,
+        content: section.content,
+        codeSnippets: serialize(section.codeSnippets),
+        citations: serialize(section.citations),
+        importance: section.importance,
+        relevantTurnIds: serialize(section.relevantTurnIds),
+        tokenCount: section.tokenCount,
+        generatedAt: section.generatedAt ?? now,
+      })
+
+      for (const diagram of section.diagrams) {
+        insertDiagram.run({
+          id: diagram.id,
+          sectionId: section.id,
+          type: diagram.type,
+          mermaidCode: diagram.mermaidCode,
+          caption: diagram.caption ?? null,
+          cachedSvg: diagram.cachedSvg ?? null,
+          createdAt: now,
+        })
+      }
+    }
+  })
+
+  tx()
+  return { ...structure, id: usedId }
+}
+
+export const getOverviewStructure = (
+  workspaceId: string,
+  conversationId: string
+): OverviewStructure | null => {
+  const db = getAgentDatabase()
+  const structureRow = db
+    .prepare(
+      `SELECT id, workspace_id as workspaceId, conversation_id as conversationId,
+        title, summary, metadata, created_at as createdAt, updated_at as updatedAt
+       FROM overview_structures
+       WHERE workspace_id = ? AND conversation_id = ?`
+    )
+    .get(workspaceId, conversationId) as
+    | {
+        id: string
+        workspaceId: string
+        conversationId: string
+        title: string
+        summary: string
+        metadata: string
+        createdAt: number
+        updatedAt: number
+      }
+    | undefined
+
+  if (!structureRow) return null
+
+  const sectionRows = db
+    .prepare(
+      `SELECT
+         id, structure_id as structureId, order_index as orderIndex, type, title, description,
+         content, code_snippets as codeSnippets, citations, importance, relevant_turn_ids as relevantTurnIds,
+         token_count as tokenCount, generated_at as generatedAt
+       FROM overview_sections
+       WHERE structure_id = ?
+       ORDER BY order_index ASC`
+    )
+    .all(structureRow.id) as Array<{
+    id: string
+    orderIndex: number
+    type: OverviewSection['type']
+    title: string
+    description: string | null
+    content: string
+    codeSnippets: string | null
+    citations: string | null
+    importance: OverviewSection['importance']
+    relevantTurnIds: string | null
+    tokenCount: number
+    generatedAt: number
+  }>
+
+  const diagramsRows = db
+    .prepare(
+      `SELECT id, section_id as sectionId, type, mermaid_code as mermaidCode, caption, cached_svg as cachedSvg, created_at as createdAt
+       FROM overview_diagrams
+       WHERE section_id IN (SELECT id FROM overview_sections WHERE structure_id = ?)`
+    )
+    .all(structureRow.id) as Array<{
+    id: string
+    sectionId: string
+    type: DiagramSpec['type']
+    mermaidCode: string
+    caption: string | null
+    cachedSvg: string | null
+    createdAt: number
+  }>
+
+  const diagramsBySection = diagramsRows.reduce<Record<string, DiagramSpec[]>>((acc, row) => {
+    const list = acc[row.sectionId] || (acc[row.sectionId] = [])
+    list.push({
+      id: row.id,
+      type: row.type,
+      mermaidCode: row.mermaidCode,
+      caption: row.caption ?? undefined,
+      sectionId: row.sectionId,
+      cachedSvg: row.cachedSvg ?? undefined,
+    })
+    return acc
+  }, {})
+
+  const sections: OverviewSection[] = sectionRows.map((row) => ({
+    id: row.id,
+    order: row.orderIndex,
+    type: row.type,
+    title: row.title,
+    description: row.description ?? '',
+    content: row.content,
+    codeSnippets: deserialize(row.codeSnippets) ?? [],
+    citations: deserialize(row.citations) ?? [],
+    importance: row.importance,
+    relevantTurnIds: deserialize(row.relevantTurnIds) ?? [],
+    tokenCount: row.tokenCount,
+    generatedAt: row.generatedAt,
+    diagrams: diagramsBySection[row.id] ?? [],
+  }))
+
+  return {
+    id: structureRow.id,
+    workspaceId: structureRow.workspaceId,
+    conversationId: structureRow.conversationId,
+    title: structureRow.title,
+    summary: structureRow.summary,
+    sections,
+    metadata:
+      deserialize<OverviewStructure['metadata']>(structureRow.metadata) ?? EMPTY_OVERVIEW_METADATA,
+    createdAt: structureRow.createdAt,
+    updatedAt: structureRow.updatedAt,
+  }
+}
+
+// Learning concepts
+export const saveLearningConcepts = (
+  workspaceId: string,
+  conversationId: string,
+  concepts: LearningConcept[]
+): LearningConcept[] => {
+  const db = getAgentDatabase()
+  const now = TIMESTAMP()
+
+  const deleteStmt = db.prepare(
+    `DELETE FROM learning_concepts WHERE workspace_id = ? AND conversation_id = ?`
+  )
+
+  const insertStmt = db.prepare(
+    `INSERT INTO learning_concepts (
+       id, workspace_id, conversation_id, name, category, description,
+       examples, related_turn_ids, difficulty, tags, searchable_text,
+       created_at, updated_at
+     ) VALUES (
+       @id, @workspaceId, @conversationId, @name, @category, @description,
+       @examples, @relatedTurnIds, @difficulty, @tags, @searchableText,
+       @createdAt, @updatedAt
+     )`
+  )
+
+  const tx = db.transaction(() => {
+    deleteStmt.run(workspaceId, conversationId)
+    for (const concept of concepts) {
+      insertStmt.run({
+        id: concept.id,
+        workspaceId,
+        conversationId,
+        name: concept.name,
+        category: concept.category,
+        description: concept.description,
+        examples: serialize(concept.examples),
+        relatedTurnIds: serialize(concept.relatedTurnIds),
+        difficulty: concept.difficulty,
+        tags: serialize(concept.tags),
+        searchableText: concept.searchableText,
+        createdAt: concept.createdAt ?? now,
+        updatedAt: now,
+      })
+    }
+  })
+
+  tx()
+  return concepts
+}
+
+export const getLearningConcepts = (
+  workspaceId: string,
+  conversationId: string
+): LearningConcept[] => {
+  const db = getAgentDatabase()
+  const rows = db
+    .prepare(
+      `SELECT
+         id, workspace_id as workspaceId, conversation_id as conversationId,
+         name, category, description, examples, related_turn_ids as relatedTurnIds,
+         difficulty, tags, searchable_text as searchableText,
+         created_at as createdAt, updated_at as updatedAt
+       FROM learning_concepts
+       WHERE workspace_id = ? AND conversation_id = ?
+       ORDER BY created_at ASC`
+    )
+    .all(workspaceId, conversationId) as Array<{
+    id: string
+    name: string
+    category: LearningConcept['category']
+    description: string
+    examples: string
+    relatedTurnIds: string | null
+    difficulty: LearningConcept['difficulty']
+    tags: string | null
+    searchableText: string
+    createdAt: number
+    updatedAt: number
+  }>
+
+  return rows.map((row) => ({
+    id: row.id,
+    workspaceId,
+    conversationId,
+    name: row.name,
+    category: row.category,
+    description: row.description,
+    examples: deserialize(row.examples) ?? [],
+    relatedTurnIds: deserialize(row.relatedTurnIds) ?? [],
+    difficulty: row.difficulty,
+    tags: deserialize(row.tags) ?? [],
+    searchableText: row.searchableText,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }))
+}
+
+export const hasEnhancedOverview = (
+  workspaceId: string,
+  conversationId: string
+): boolean => {
+  const db = getAgentDatabase()
+  const row = db
+    .prepare(
+      `SELECT 1 FROM overview_structures WHERE workspace_id = ? AND conversation_id = ? LIMIT 1`
+    )
+    .get(workspaceId, conversationId)
+  return row !== undefined
+}
+
+export const getEnhancedOverviewConversationIds = (
+  workspaceId: string
+): Set<string> => {
+  const db = getAgentDatabase()
+  const rows = db
+    .prepare(
+      `SELECT conversation_id FROM overview_structures WHERE workspace_id = ?`
+    )
+    .all(workspaceId) as Array<{ conversation_id: string }>
+  return new Set(rows.map((r) => r.conversation_id))
 }

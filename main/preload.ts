@@ -25,6 +25,8 @@ import type {
   LearningsRecord,
   ResourcesRecord,
 } from './services/agent-storage'
+import type { OverviewStructure, DiagramSpec } from './services/types/overview-structure'
+import type { LearningConcept } from './services/types/learning-concept'
 import type { ChatContext } from './services/agent-runtime'
 import type { NoteRecord } from './services/notes-storage'
 import type { SnippetRecord } from './services/snippets-storage'
@@ -302,6 +304,21 @@ const api = {
     },
     hasApiKey: () => ipcRenderer.invoke('overview:hasApiKey') as Promise<boolean>,
   },
+  enhancedOverview: {
+    generate: (payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+      options?: { tokenBudget?: number; parallelSections?: number }
+    }) => ipcRenderer.invoke('enhanced-overview:generate', payload) as Promise<OverviewStructure>,
+  },
+  diagram: {
+    generate: (payload: {
+      type: 'architecture' | 'flowchart' | 'sequence' | 'component' | 'state'
+      conversationExcerpt: string
+    }) => ipcRenderer.invoke('diagram:generate', payload) as Promise<DiagramSpec>,
+  },
   todos: {
     list: (options?: { limit?: number; offset?: number; search?: string }) =>
       ipcRenderer.invoke('todos:list', options) as Promise<TodoRecord[]>,
@@ -332,6 +349,12 @@ const api = {
       ipcRenderer.invoke('learnings:get', payload) as Promise<LearningsRecord | null>,
     delete: (payload: { workspaceId: string; conversationId: string }) =>
       ipcRenderer.invoke('learnings:delete', payload) as Promise<boolean>,
+    extractConcepts: (payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+    }) => ipcRenderer.invoke('learnings:extract-concepts', payload) as Promise<LearningConcept[]>,
   },
   resources: {
     generate: (payload: {

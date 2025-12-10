@@ -1,4 +1,9 @@
 import { agentsIpc } from './ipc'
+import {
+  prepareContextForGeneration,
+  FALLBACK_BUDGETS,
+  TOKEN_BUDGETS,
+} from './learnings-context'
 import type {
   Exercise,
   ExerciseType,
@@ -12,6 +17,12 @@ import type {
 } from '@/types/learnings'
 import type { ProviderId } from '@/lib/ai/config'
 
+type ConversationBubble = {
+  type: 'user' | 'ai'
+  text: string
+  timestamp?: number
+}
+
 function hashPrompt(prompt: string): string {
   let hash = 0
   for (let i = 0; i < prompt.length; i++) {
@@ -22,133 +33,138 @@ function hashPrompt(prompt: string): string {
   return Math.abs(hash).toString(36)
 }
 
-const GENERATION_SYSTEM_PROMPT = `You are an AI tutor creating educational exercises to help users learn programming concepts.
+const GENERATION_SYSTEM_PROMPT = `You are a challenging coding coach creating exercises that build muscle memory. Your exercises should feel like a skilled mentor pushing students to think—not AI-generated fluff.
 
-IMPORTANT - EXERCISE PHILOSOPHY:
-- Extract the PROGRAMMING TOPICS and CONCEPTS from the conversation (e.g., debouncing, API calls, state management, closures)
-- Create GENERAL, EDUCATIONAL examples that teach these concepts - NOT the user's actual code
-- Think textbook-style exercises: clean, focused snippets that illustrate the concept
-- If the user discussed debounce, create a simple debounce example - don't copy their implementation
-- Focus on teaching the underlying concept with minimal, clear code
+EXERCISE PHILOSOPHY:
+- Extract PROGRAMMING TOPICS from the conversation (debouncing, API calls, closures, etc.)
+- Create FOCUSED exercises that drill the concept—not the user's exact code
+- Each exercise should make the user THINK, not just fill in obvious blanks
+- Vary challenge types to keep engagement high
+
+CHALLENGE TYPES (for interactive exercises):
+1. fill-blank: Complete missing code (classic fill-in)
+2. fix-bug: Find and fix the bug in broken code
+3. complete-function: Implement a function body given signature + description
+4. refactor: Improve given code (make it cleaner, more efficient)
+5. predict-output: What does this code output? (user types the answer)
 
 EXERCISE TYPES:
-- interactive: Fill-in-the-blank code exercises (general examples teaching the concept)
-- mcq: Multiple choice about the concept (4 options, 1 correct)
-- tf: True/False statements about the concept
+- interactive: Code challenges (vary challengeType for engagement)
+- mcq: Multiple choice (4 options, 1 correct, 1-2 plausible distractors)
+- tf: True/False about the concept
 
 DIFFICULTY:
-- easy: Basic understanding of the concept
-- medium: Applying the concept
-- hard: Edge cases, gotchas, deeper understanding
+- easy: Basic syntax, straightforward application
+- medium: Requires understanding, not just pattern matching
+- hard: Edge cases, gotchas, real-world complexity
 
-TOPICS (REQUIRED):
-- Each exercise MUST include a "topics" array with 2-3 relevant programming topics
-- Topics should be short, lowercase tags like: "closures", "async/await", "react hooks", "typescript generics"
-- Pick the most relevant concepts being tested
+TIERED HINTS (REQUIRED for interactive):
+Every interactive exercise MUST have exactly 3 tiered hints:
+- Level 1: Gentle nudge, direction only ("Think about what happens when X is null")
+- Level 2: More specific guidance ("You need to handle the edge case before the main logic")
+- Level 3: Near-solution ("Add a guard clause: if (!x) return default")
 
-INTERACTIVE EXERCISES - CRITICAL:
-The starterCode MUST have clear inline hints showing WHERE to add code. Use comment syntax appropriate for the language:
+STEP GOALS (for interactive):
+Break down what the user needs to accomplish:
+- "Identify the missing null check"
+- "Add the guard clause"
+- "Return the correct fallback value"
 
-For JavaScript/TypeScript:
-\`\`\`
-const user = {
-  name: "John",
-  // 👉 ADD AGE PROPERTY HERE
-};
-\`\`\`
+ESTIMATED TIME:
+- easy: 2-3 minutes
+- medium: 4-6 minutes
+- hard: 7-10 minutes
 
-For JSON:
-\`\`\`
-{
-  "name": "app",
-  "___ADD_VERSION_HERE___": ""
-}
-\`\`\`
-
-For YAML:
-\`\`\`
-name: app
-# 👉 add port config here
-\`\`\`
-
-For shell/commands:
-\`\`\`
-git commit -m "___WRITE_MESSAGE___"
-\`\`\`
-
-For CSS:
-\`\`\`
-.button {
-  /* 👉 add hover color */
-}
-\`\`\`
-
-HINT STYLES (pick what fits):
-- Comments: // 👉 add X here, /* add X */, # add X
-- Placeholders: ___ADD_X_HERE___, <ADD_X>, [YOUR_CODE]
-- Be specific: "add className prop" not just "add code"
-
-OUTPUT JSON:
+OUTPUT JSON SCHEMA:
 {
   "exercises": [
     {
       "id": "ex_xxx",
       "type": "interactive",
-      "prompt": "Add the missing age property",
-      "difficulty": "easy",
-      "language": "javascript",
-      "starterCode": "code with inline hints",
-      "expectedSolution": "complete correct code",
-      "placeholders": [{"id": "1", "label": "age property", "expected": "age: 25"}],
-      "topics": ["objects", "properties"],
+      "challengeType": "fix-bug",
+      "prompt": "This debounce implementation has a subtle bug. Find and fix it.",
+      "difficulty": "medium",
+      "language": "typescript",
+      "starterCode": "code with the bug or gaps",
+      "expectedSolution": "correct implementation",
+      "placeholders": [{"id": "1", "label": "bug fix", "expected": "clearTimeout(timer)"}],
+      "tieredHints": [
+        {"level": 1, "hint": "What happens if the function is called rapidly?"},
+        {"level": 2, "hint": "Look at what happens to the previous timeout"},
+        {"level": 3, "hint": "You need to clear the existing timer before setting a new one"}
+      ],
+      "stepGoals": ["Identify the missing cleanup", "Add clearTimeout call", "Verify rapid calls work"],
+      "estimatedMinutes": 5,
+      "topics": ["debouncing", "closures", "timers"],
       "createdAt": timestamp
     }
   ]
 }
 
-For MCQ: options array with {id, label, isCorrect}, explanation, topics
-For TF: statement, correct (boolean), explanation, topics
+INLINE HINTS IN STARTER CODE:
+Use clear markers showing WHERE to edit:
+- // 👉 FIX: something's wrong here
+- // TODO: implement this
+- /* YOUR CODE HERE */
+- ___REPLACE_THIS___
 
-HANDLING USER REQUESTS (GUARDRAILS):
-If user provides a custom request, apply these rules strictly:
-- ONLY extract programming/coding topics from their request
-- IGNORE any non-programming requests, personal questions, or off-topic content
-- If they ask for "jokes" or "stories", ignore it and focus on any programming concepts mentioned
-- If no valid programming topic can be extracted, use topics from the conversation context instead
-- Examples of valid topics: "recursion", "promises", "CSS grid", "SQL joins", "React state"
-- Examples of INVALID requests to ignore: "tell me a joke", "what's the weather", "write my homework"
+For fix-bug: Include the bug, mark suspicious area
+For complete-function: Provide signature, add // implement body
+For refactor: Provide working but ugly code
+For predict-output: Provide code, add // Output: ___
+
+CHALLENGE MIX:
+When generating multiple exercises, vary the types:
+- Don't make them all fill-blank
+- Include at least one fix-bug or complete-function if count >= 3
+- Make hard exercises use refactor or predict-output
+
+TONE:
+- Be direct, not fluffy
+- Challenges should feel earned
+- Feedback should push them to think
+
+GUARDRAILS:
+- ONLY create programming exercises
+- IGNORE non-coding requests
+- Extract concepts from conversation if request is invalid
+- NO user's actual code—create fresh examples
 
 RULES:
-- DO NOT copy user's actual code - create fresh, simple examples
-- Extract concepts and create textbook-style learning exercises
-- Keep code snippets SHORT (5-15 lines max) and focused on ONE concept
-- Inline hints are REQUIRED for interactive exercises
-- User should know exactly WHERE to type
-- Concise explanations (1-2 sentences)
-- No duplicates from existingPromptHashes
-- ALWAYS include 2-3 topics per exercise
+- 5-15 lines max per exercise
+- ALWAYS include tieredHints (3 levels)
+- ALWAYS include stepGoals (2-4 items)
+- ALWAYS include estimatedMinutes
+- ALWAYS include challengeType for interactive
+- Vary challengeType across exercises
+- JSON only, no markdown`
 
-JSON only, no markdown.`
+const EVALUATION_SYSTEM_PROMPT = `You are a sharp coding coach. Check their work, be fair but push them to improve.
 
-const EVALUATION_SYSTEM_PROMPT = `You are a chill coding buddy helping someone learn. Check if their answer makes sense conceptually.
-
-VIBE:
-- Super lenient on formatting, spacing, quotes, semicolons
-- Variable names don't matter if logic is right
-- Typos are fine if intent is clear
-- Alternative solutions totally count
-- Focus on: did they get the idea?
+EVALUATION RULES:
+- Lenient on formatting, spacing, semicolons
+- Variable names don't matter if logic is correct
+- Alternative approaches count if they solve the problem
+- Focus on: does the code actually work?
 
 RESPONSE (JSON only):
 {
   "isCorrect": true/false,
-  "feedback": "1 short sentence, casual tone, encouraging"
+  "feedback": "1-2 sentences. Direct. If correct, acknowledge what they did well. If wrong, point to the issue without giving away the answer."
 }
 
 If incorrect, add:
-- "hint": "one quick tip to fix it"
+{
+  "hint": "A challenging hint that makes them think, not a giveaway",
+  "whatToCheck": "The specific area they should re-examine"
+}
 
-Keep it light. Learning should feel good.
+TONE:
+- Not harsh, but not hand-holding
+- "Almost there—check your loop condition" not "You're doing great!"
+- Acknowledge good attempts even when wrong
+- Push them toward the insight
+
 JSON only, no markdown.`
 
 export async function generateExercises(
@@ -157,8 +173,48 @@ export async function generateExercises(
   modelId: string,
   opts?: { workspaceId?: string; conversationId?: string }
 ): Promise<GenerateExercisesResponse> {
+  const budgetsToTry = request.tokenBudget
+    ? [request.tokenBudget, ...FALLBACK_BUDGETS.filter((b) => b < request.tokenBudget)]
+    : FALLBACK_BUDGETS
+
+  let lastError: Error | null = null
+
+  for (const budget of budgetsToTry) {
+    try {
+      const result = await generateExercisesWithBudget(request, provider, modelId, opts, budget)
+      return result
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.warn(`Learnings generation failed with budget ${budget}, trying smaller...`)
+      continue
+    }
+  }
+
+  throw lastError ?? new Error('Failed to generate exercises after all retries.')
+}
+
+async function generateExercisesWithBudget(
+  request: GenerateExercisesRequest,
+  provider: ProviderId,
+  modelId: string,
+  opts: { workspaceId?: string; conversationId?: string } | undefined,
+  tokenBudget: number
+): Promise<GenerateExercisesResponse> {
   const fullModelId = `${provider}:${modelId}`
-  
+
+  let chatContext: string
+  if (request.bubbles && request.bubbles.length > 0) {
+    const prepared = prepareContextForGeneration(request.bubbles, tokenBudget)
+    chatContext = prepared.context
+    if (prepared.truncated) {
+      console.log(`Learnings: truncated context to ${prepared.stats.totalTurns} turns for budget ${tokenBudget}`)
+    }
+  } else if (request.chatContext) {
+    chatContext = request.chatContext.slice(0, tokenBudget * 4)
+  } else {
+    throw new Error('No chat context or bubbles provided')
+  }
+
   const chat = await agentsIpc.chats.create({
     title: 'temp: learnings',
     modelId: fullModelId,
@@ -175,32 +231,32 @@ export async function generateExercises(
       content: GENERATION_SYSTEM_PROMPT,
     })
 
-    const userRequestSection = request.userRequest 
+    const userRequestSection = request.userRequest
       ? `\nUSER REQUEST (extract ONLY programming topics, ignore non-coding requests):\n"${request.userRequest}"\n`
       : ''
 
-    const userPrompt = `Analyze this conversation and create learning exercises for the programming concepts discussed:
+    const userPrompt = `Analyze this conversation and create challenging exercises for the programming concepts discussed:
 
 CONVERSATION TITLE: "${request.conversationTitle}"
 
 CONVERSATION CONTEXT:
-${request.chatContext}
+${chatContext}
 ${userRequestSection}
 YOUR TASK:
-1. Identify the key programming concepts/topics from this conversation${request.userRequest ? ' and user request' : ''}
-2. Create GENERAL educational exercises that teach these concepts
-3. Use simple, clean example code - NOT the user's actual code
-4. Think: "What would a textbook exercise look like for this concept?"
-5. Include 2-3 relevant topic tags for each exercise
+1. Identify key programming concepts from this conversation${request.userRequest ? ' and user request' : ''}
+2. Create VARIED challenge types (mix fill-blank, fix-bug, complete-function, etc.)
+3. Each exercise must include tieredHints (3 levels), stepGoals, estimatedMinutes, and challengeType
+4. Make exercises that require thinking, not pattern matching
+5. Include 2-3 topic tags per exercise
 
 REQUIREMENTS:
-- Interactive exercises: ${request.desiredCounts.interactive}
+- Interactive exercises: ${request.desiredCounts.interactive} (vary challengeType across these)
 - Multiple choice questions: ${request.desiredCounts.mcq}
 - True/False questions: ${request.desiredCounts.tf}
 
 ${request.existingPromptHashes.length > 0 ? `AVOID SIMILAR TO (prompt hashes): ${request.existingPromptHashes.join(', ')}` : ''}
 
-Generate the exercises now.`
+Generate challenging exercises now. Remember: tieredHints, stepGoals, estimatedMinutes, and challengeType are REQUIRED for interactive.`
 
     await agentsIpc.messages.append({
       chatId: chat.id,
@@ -215,22 +271,34 @@ Generate the exercises now.`
     if (!jsonMatch) {
       throw new Error('No valid JSON found in response')
     }
-    
+
     const parsed = JSON.parse(jsonMatch[0]) as { exercises: Exercise[]; message?: string }
-    
-    const exercises = parsed.exercises.map((ex) => ({
-      ...ex,
-      createdAt: Date.now(),
-    }))
-    
+
+    const exercises = parsed.exercises.map((ex) => {
+      if (ex.type === 'interactive') {
+        return {
+          ...ex,
+          challengeType: ex.challengeType || 'fill-blank',
+          tieredHints: ex.tieredHints || [],
+          stepGoals: ex.stepGoals || [],
+          estimatedMinutes: ex.estimatedMinutes || 5,
+          createdAt: Date.now(),
+        }
+      }
+      return {
+        ...ex,
+        createdAt: Date.now(),
+      }
+    })
+
     return {
       exercises,
-      contextSummaryId: hashPrompt(request.chatContext.slice(0, 500)),
+      contextSummaryId: hashPrompt(chatContext.slice(0, 500)),
       message: parsed.message,
     }
   } catch (error) {
     console.error('Failed to parse exercise generation response:', error)
-    throw new Error('Failed to generate exercises. Please try again.')
+    throw error
   } finally {
     try {
       await agentsIpc.chats.delete(chat.id)
@@ -292,12 +360,16 @@ Did they get it?`
       throw new Error('No valid JSON found in response')
     }
     
-    const parsed = JSON.parse(jsonMatch[0]) as { isCorrect: boolean; feedback: string; hint?: string }
+    const parsed = JSON.parse(jsonMatch[0]) as { isCorrect: boolean; feedback: string; hint?: string; whatToCheck?: string }
+    
+    const suggestions: string[] = []
+    if (parsed.hint) suggestions.push(parsed.hint)
+    if (parsed.whatToCheck) suggestions.push(`Check: ${parsed.whatToCheck}`)
     
     return {
       isCorrect: parsed.isCorrect,
       feedback: parsed.feedback,
-      suggestions: parsed.hint ? [parsed.hint] : undefined,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
     }
   } catch (error) {
     console.error('Failed to parse evaluation response:', error)

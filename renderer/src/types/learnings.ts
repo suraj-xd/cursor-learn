@@ -1,6 +1,7 @@
 export type ExerciseType = 'interactive' | 'mcq' | 'tf'
 export type ExerciseDifficulty = 'easy' | 'medium' | 'hard'
 export type ExerciseStatus = 'fresh' | 'attempted' | 'correct' | 'incorrect'
+export type ChallengeType = 'fill-blank' | 'fix-bug' | 'complete-function' | 'refactor' | 'predict-output'
 
 export type InteractivePlaceholder = {
   id: string
@@ -9,19 +10,29 @@ export type InteractivePlaceholder = {
   hint?: string
 }
 
+export type TieredHint = {
+  level: 1 | 2 | 3
+  hint: string
+}
+
 export type InteractiveExercise = {
   id: string
   type: 'interactive'
   prompt: string
   difficulty: ExerciseDifficulty
+  challengeType: ChallengeType
   starterCode: string
   language: string
   placeholders: InteractivePlaceholder[]
   expectedSolution: string
   hints?: string[]
+  tieredHints?: TieredHint[]
+  stepGoals?: string[]
+  estimatedMinutes?: number
   topics?: string[]
   contextSummaryId?: string
   createdAt: number
+  reviewAt?: number | null
 }
 
 export type McqOption = {
@@ -64,10 +75,18 @@ export type ExerciseAttempt = {
   feedback?: string
   attemptsCount: number
   lastAttemptAt?: number
+  revealedHintLevel?: 0 | 1 | 2 | 3
+}
+
+export type ConversationBubble = {
+  type: 'user' | 'ai'
+  text: string
+  timestamp?: number
 }
 
 export type GenerateExercisesRequest = {
-  chatContext: string
+  chatContext?: string
+  bubbles?: ConversationBubble[]
   conversationTitle: string
   existingPromptHashes: string[]
   desiredCounts: {
@@ -81,6 +100,7 @@ export type GenerateExercisesRequest = {
     hard: number
   }
   userRequest?: string
+  tokenBudget?: number
 }
 
 export type GenerateExercisesResponse = {

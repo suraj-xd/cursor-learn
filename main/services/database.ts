@@ -237,6 +237,139 @@ CREATE TABLE IF NOT EXISTS conversation_resources (
 
 CREATE INDEX IF NOT EXISTS idx_conversation_resources_lookup
 ON conversation_resources (workspace_id, conversation_id);
+
+CREATE TABLE IF NOT EXISTS parsed_conversations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  stats TEXT NOT NULL,
+  parsed_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, conversation_id)
+);
+
+CREATE TABLE IF NOT EXISTS dialog_turns (
+  id TEXT PRIMARY KEY,
+  parsed_conversation_id TEXT NOT NULL,
+  turn_index INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  code_blocks TEXT,
+  file_refs TEXT,
+  error_mentions TEXT,
+  decisions TEXT,
+  importance TEXT NOT NULL,
+  importance_score INTEGER NOT NULL,
+  token_count INTEGER NOT NULL,
+  has_substantial_code INTEGER DEFAULT 0,
+  is_key_decision INTEGER DEFAULT 0,
+  is_problem_resolution INTEGER DEFAULT 0,
+  FOREIGN KEY (parsed_conversation_id) REFERENCES parsed_conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_dialog_turns_conversation
+ON dialog_turns (parsed_conversation_id, turn_index);
+
+CREATE INDEX IF NOT EXISTS idx_dialog_turns_importance
+ON dialog_turns (importance);
+
+CREATE TABLE IF NOT EXISTS overview_structures (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  metadata TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, conversation_id)
+);
+
+CREATE TABLE IF NOT EXISTS overview_sections (
+  id TEXT PRIMARY KEY,
+  structure_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  content TEXT NOT NULL,
+  code_snippets TEXT,
+  citations TEXT,
+  importance TEXT NOT NULL,
+  relevant_turn_ids TEXT,
+  token_count INTEGER DEFAULT 0,
+  generated_at INTEGER NOT NULL,
+  FOREIGN KEY (structure_id) REFERENCES overview_structures(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS overview_diagrams (
+  id TEXT PRIMARY KEY,
+  section_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  mermaid_code TEXT NOT NULL,
+  caption TEXT,
+  cached_svg TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (section_id) REFERENCES overview_sections(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_overview_structures_lookup
+ON overview_structures (workspace_id, conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_overview_sections_structure
+ON overview_sections (structure_id, order_index);
+
+CREATE TABLE IF NOT EXISTS learning_concepts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT NOT NULL,
+  examples TEXT NOT NULL,
+  related_turn_ids TEXT,
+  difficulty TEXT NOT NULL,
+  tags TEXT,
+  searchable_text TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_learning_concepts_conversation
+ON learning_concepts (workspace_id, conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_learning_concepts_category
+ON learning_concepts (category);
+
+CREATE INDEX IF NOT EXISTS idx_learning_concepts_search
+ON learning_concepts (searchable_text);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  text_content TEXT NOT NULL,
+  embedding BLOB NOT NULL,
+  embedding_model TEXT NOT NULL,
+  token_count INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS embedding_metadata (
+  workspace_id TEXT PRIMARY KEY,
+  total_embeddings INTEGER DEFAULT 0,
+  total_size_bytes INTEGER DEFAULT 0,
+  last_cleanup_at INTEGER,
+  embedding_model TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_workspace
+ON embeddings (workspace_id, source_type);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_source
+ON embeddings (source_id);
 `
 
 export function initAgentDatabase(dbFileName = 'agents.db'): BetterSqliteDatabase {

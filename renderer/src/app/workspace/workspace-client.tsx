@@ -25,7 +25,7 @@ import {
 } from '@/store/workspace'
 import { ChatView } from '@/components/workspace/chat-view'
 import { CompactedChatView } from '@/components/workspace/compacted-chat-view'
-import { OverviewView } from '@/components/workspace/overview-view'
+import { EnhancedOverviewView } from '@/components/workspace/enhanced-overview-view'
 import { LearningsView } from '@/components/workspace/learnings-view'
 import { ResourcesView } from '@/components/workspace/resources-view'
 import { cn } from '@/lib/utils'
@@ -257,7 +257,7 @@ function WorkspaceClientInner() {
                 <div className="flex-1 overflow-hidden">
                   {activeContentTab === 'overview' ? (
                     <Suspense fallback={<ChatViewSkeleton />}>
-                      <OverviewView
+                      <EnhancedOverviewView
                         workspaceId={workspaceId ?? ''}
                         conversationId={selectedChat.id}
                         conversationTitle={selectedChat.title}

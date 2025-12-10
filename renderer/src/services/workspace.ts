@@ -6,6 +6,7 @@ export interface ConversationPreview {
   lastUpdatedAt: number
   createdAt: number
   messageCount: number
+  hasEnhancedOverview: boolean
 }
 
 export interface WorkspaceProject {

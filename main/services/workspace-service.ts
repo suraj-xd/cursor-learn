@@ -4,6 +4,7 @@ import path from 'path'
 import Database from 'better-sqlite3'
 import type { ChatTab, ComposerChat, ComposerData } from '../../renderer/src/types/workspace'
 import { resolveWorkspacePath } from '../utils/workspace-path'
+import { getEnhancedOverviewConversationIds } from './agent-storage'
 
 type WorkspaceEntry = {
   name: string
@@ -16,6 +17,7 @@ export interface ConversationPreview {
   lastUpdatedAt: number
   createdAt: number
   messageCount: number
+  hasEnhancedOverview: boolean
 }
 
 export interface WorkspaceProject {
@@ -386,6 +388,7 @@ export async function listWorkspaces(): Promise<WorkspaceProject[]> {
     }
 
     const conversations = conversationMap[entry.name] || []
+    const indexedIds = getEnhancedOverviewConversationIds(entry.name)
     const conversationPreviews: ConversationPreview[] = conversations
       .sort((a, b) => (b.lastUpdatedAt || 0) - (a.lastUpdatedAt || 0))
       .map(c => ({
@@ -393,7 +396,8 @@ export async function listWorkspaces(): Promise<WorkspaceProject[]> {
         name: c.name,
         lastUpdatedAt: c.lastUpdatedAt,
         createdAt: c.createdAt,
-        messageCount: c.messageCount
+        messageCount: c.messageCount,
+        hasEnhancedOverview: indexedIds.has(c.composerId),
       }))
     projects.push({
       id: entry.name,

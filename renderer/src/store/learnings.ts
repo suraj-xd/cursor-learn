@@ -56,6 +56,9 @@ type LearningsStore = LearningsState & {
   clearExercises: () => void
   getExercisesByType: (type: ExerciseType) => Exercise[]
   getAttempt: (exerciseId: string) => ExerciseAttempt | undefined
+  revealHint: (exerciseId: string) => void
+  markForReview: (exerciseId: string, delayMinutes?: number) => void
+  getDueForReview: () => InteractiveExercise[]
 }
 
 const DEFAULT_COUNTS = {
@@ -402,6 +405,69 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
   getAttempt: (exerciseId) => {
     return get().attempts[exerciseId]
   },
+
+  revealHint: (exerciseId) => {
+    const state = get()
+    const currentAttempt = state.attempts[exerciseId]
+    const currentLevel = currentAttempt?.revealedHintLevel ?? 0
+    if (currentLevel >= 3) return
+
+    const newLevel = (currentLevel + 1) as 1 | 2 | 3
+    const updatedAttempt: ExerciseAttempt = {
+      exerciseId,
+      status: currentAttempt?.status ?? "fresh",
+      userAnswer: currentAttempt?.userAnswer ?? null,
+      feedback: currentAttempt?.feedback,
+      attemptsCount: currentAttempt?.attemptsCount ?? 0,
+      lastAttemptAt: currentAttempt?.lastAttemptAt,
+      revealedHintLevel: newLevel,
+    }
+
+    const updatedAttempts = { ...state.attempts, [exerciseId]: updatedAttempt }
+    set({ attempts: updatedAttempts })
+
+    saveToCache(
+      state.currentWorkspaceId,
+      state.currentConversationId,
+      state.exercises,
+      updatedAttempts,
+      "cached"
+    )
+  },
+
+  markForReview: (exerciseId, delayMinutes = 30) => {
+    const state = get()
+    const exercise = state.exercises.find((ex) => ex.id === exerciseId)
+    if (!exercise || exercise.type !== "interactive") return
+
+    const reviewAt = Date.now() + delayMinutes * 60 * 1000
+    const updatedExercises = state.exercises.map((ex) =>
+      ex.id === exerciseId && ex.type === "interactive"
+        ? { ...ex, reviewAt }
+        : ex
+    )
+
+    set({ exercises: updatedExercises })
+
+    saveToCache(
+      state.currentWorkspaceId,
+      state.currentConversationId,
+      updatedExercises,
+      state.attempts,
+      "cached"
+    )
+  },
+
+  getDueForReview: () => {
+    const state = get()
+    const now = Date.now()
+    return state.exercises.filter(
+      (ex): ex is InteractiveExercise =>
+        ex.type === "interactive" &&
+        ex.reviewAt != null &&
+        ex.reviewAt <= now
+    )
+  },
 }))
 
 export const learningsActions = {
@@ -414,4 +480,6 @@ export const learningsActions = {
   submitTfAnswer: useLearningsStore.getState().submitTfAnswer,
   resetAttempt: useLearningsStore.getState().resetAttempt,
   clearExercises: useLearningsStore.getState().clearExercises,
+  revealHint: useLearningsStore.getState().revealHint,
+  markForReview: useLearningsStore.getState().markForReview,
 }

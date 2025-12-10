@@ -14,25 +14,24 @@ function getPromptsDir(): string {
 }
 
 function loadPrompt(filename: string): string {
-  const promptsDir = getPromptsDir()
-  const filePath = join(promptsDir, filename)
-  
-  try {
-    if (existsSync(filePath)) {
-      return readFileSync(filePath, 'utf-8').trim()
+  const candidates = [
+    join(getPromptsDir(), filename),
+    join(dirname(__dirname), 'ai', 'prompts', filename),
+    join(process.cwd(), 'main', 'services', 'ai', 'prompts', filename),
+  ]
+
+  for (const filePath of candidates) {
+    try {
+      if (existsSync(filePath)) {
+        return readFileSync(filePath, 'utf-8').trim()
+      }
+    } catch {
+      continue
     }
-    
-    const altPath = join(dirname(__dirname), 'ai', 'prompts', filename)
-    if (existsSync(altPath)) {
-      return readFileSync(altPath, 'utf-8').trim()
-    }
-    
-    console.warn(`Prompt file not found: ${filename}`)
-    return ''
-  } catch (err) {
-    console.warn(`Failed to load prompt: ${filename}`, err)
-    return ''
   }
+
+  console.warn(`Prompt file not found: ${filename}`)
+  return ''
 }
 
 export const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')
@@ -43,6 +42,11 @@ export const COMPACT_REDUCE_PROMPT = loadPrompt('compact-reduce.md')
 export const COMPACT_FULL_CONTEXT_PROMPT = loadPrompt('compact-full.md')
 export const SUGGESTIONS_PROMPT = loadPrompt('suggestions.md')
 export const OVERVIEW_PROMPT = loadPrompt('overview.md')
+export const OVERVIEW_STRUCTURE_PROMPT = loadPrompt('overview-structure.md')
+export const OVERVIEW_SECTION_PROMPT = loadPrompt('overview-section.md')
+export const DIAGRAM_ARCHITECTURE_PROMPT = loadPrompt('diagram-architecture.md')
+export const DIAGRAM_FLOW_PROMPT = loadPrompt('diagram-flow.md')
+export const LEARNINGS_EXTRACT_PROMPT = loadPrompt('learnings-extract.md')
 export const RESOURCES_ANALYSIS_PROMPT = loadPrompt('resources-analysis.md')
 export const RESOURCES_GENERATE_PROMPT = loadPrompt('resources-generate.md')
 
@@ -72,6 +76,10 @@ export function buildSuggestionsPrompt(content: string): string {
 
 export function buildOverviewPrompt(title: string, conversationText: string): string {
   return `${OVERVIEW_PROMPT}\n\n---\nCONVERSATION TITLE: "${title}"\n\nCONVERSATION:\n${conversationText.slice(0, 80000)}`
+}
+
+export function buildOverviewStructurePrompt(title: string, conversationText: string): string {
+  return `${OVERVIEW_STRUCTURE_PROMPT}\n\nCONVERSATION TITLE: "${title}"\n\nCONVERSATION:\n${conversationText.slice(0, 80000)}`
 }
 
 export function buildResourcesAnalysisPrompt(title: string, conversationText: string): string {

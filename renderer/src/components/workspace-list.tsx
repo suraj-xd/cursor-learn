@@ -11,8 +11,11 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { FolderX, FolderOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { FolderX, FolderOpen, ChevronDown, ChevronUp, Search, Sparkles } from "lucide-react";
 import { TextIcon, FileTextIcon, ClockIcon } from "@radix-ui/react-icons";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import type { ConversationPreview } from "@/services/workspace";
 import { cn } from "@/lib/utils";
 import { useWorkspaceListStore } from "@/store/workspace";
@@ -48,12 +51,20 @@ const ConversationRow = memo(function ConversationRow({
     <Link
       href={`/workspace?id=${projectId}&tab=${conversation.id}`}
       className={cn(
-        "grid grid-cols-[1fr_150px_150px] gap-3 px-3 py-2 text-sm hover:bg-muted/50 transition-colors border-b border-border/50 last:border-b-0",
+        "grid grid-cols-[1fr_100px_150px_150px] gap-3 px-3 py-2 text-sm hover:bg-muted/50 transition-colors border-b border-border/50 last:border-b-0",
         isExpanded && "animate-in fade-in-0 duration-300"
       )}
     >
-      <span className="truncate text-muted-foreground/50 hover:text-foreground transition-colors">
+      <span className="truncate text-muted-foreground/50 hover:text-foreground transition-colors flex items-center gap-2">
         {conversation.name}
+      </span>
+      <span className="flex items-center justify-end">
+        {conversation.hasEnhancedOverview && (
+          <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0.5">
+            <Sparkles className="w-2.5 h-2.5" />
+            Indexed
+          </Badge>
+        )}
       </span>
       <span
         className="text-xs text-muted-foreground text-right whitespace-nowrap font-departure uppercase tracking-wider"
@@ -112,9 +123,12 @@ const WorkspaceCard = memo(function WorkspaceCard({
       </Link>
 
       <div className="divide-y divide-border/50">
-        <div className="grid grid-cols-[1fr_150px_150px] gap-3 px-3 py-1.5 text-xs text-muted-foreground/50 uppercase tracking-wider font-medium border-b border-border/50">
+        <div className="grid grid-cols-[1fr_100px_150px_150px] gap-3 px-3 py-1.5 text-xs text-muted-foreground/50 uppercase tracking-wider font-medium border-b border-border/50">
           <span className="flex items-center gap-1">
             <TextIcon className="w-3 h-3" /> Name
+          </span>
+          <span className="text-right flex items-center justify-end gap-1">
+            Status
           </span>
           <span className="text-right flex items-center justify-end gap-1">
             <ClockIcon className="w-3 h-3" /> Updated
@@ -180,22 +194,51 @@ const EmptyState = memo(function EmptyState() {
 
 export const WorkspaceList = memo(function WorkspaceList() {
   const { projects, isLoading, fetchProjects } = useWorkspaceListStore();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [indexedOnly, setIndexedOnly] = useState(false);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
 
-  const projectsWithConversations = useMemo(
-    () =>
-      projects
-        .filter((project) => project.conversationCount > 0)
-        .sort((a, b) => {
-          const aLatest = a.conversations[0]?.lastUpdatedAt ?? 0;
-          const bLatest = b.conversations[0]?.lastUpdatedAt ?? 0;
-          return bLatest - aLatest;
-        }),
-    [projects]
-  );
+  const filteredProjects = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+
+    return projects
+      .filter((project) => project.conversationCount > 0)
+      .map((project) => {
+        let conversations = project.conversations;
+
+        if (indexedOnly) {
+          conversations = conversations.filter((c) => c.hasEnhancedOverview);
+        }
+
+        if (query) {
+          conversations = conversations.filter((c) =>
+            c.name.toLowerCase().includes(query)
+          );
+        }
+
+        return {
+          ...project,
+          conversations,
+          conversationCount: conversations.length,
+        };
+      })
+      .filter((project) => project.conversationCount > 0)
+      .sort((a, b) => {
+        const aLatest = a.conversations[0]?.lastUpdatedAt ?? 0;
+        const bLatest = b.conversations[0]?.lastUpdatedAt ?? 0;
+        return bLatest - aLatest;
+      });
+  }, [projects, searchQuery, indexedOnly]);
+
+  const indexedCount = useMemo(() => {
+    return projects.reduce(
+      (acc, p) => acc + p.conversations.filter((c) => c.hasEnhancedOverview).length,
+      0
+    );
+  }, [projects]);
 
   if (isLoading && projects.length === 0) {
     return <Loading message="Loading projects..." />;
@@ -211,9 +254,37 @@ export const WorkspaceList = memo(function WorkspaceList() {
 
   return (
     <div className="space-y-3 pt-4 min-h-[calc(100vh-150px)]">
-      {projectsWithConversations.map((project) => (
-        <WorkspaceCard key={project.id} project={project} />
-      ))}
+      <div className="flex items-center justify-between gap-4 px-1">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            Indexed only ({indexedCount})
+          </span>
+          <Switch
+            checked={indexedOnly}
+            onCheckedChange={setIndexedOnly}
+          />
+        </div>
+      </div>
+
+      {filteredProjects.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          No conversations match your filters.
+        </div>
+      ) : (
+        filteredProjects.map((project) => (
+          <WorkspaceCard key={project.id} project={project} />
+        ))
+      )}
     </div>
   );
 });

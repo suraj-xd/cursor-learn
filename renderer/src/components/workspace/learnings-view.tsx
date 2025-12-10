@@ -11,6 +11,16 @@ import {
   BookOpen,
   MoreVertical,
   RefreshCw,
+  Lightbulb,
+  Clock,
+  CheckCircle2,
+  Circle,
+  RotateCcw,
+  Bug,
+  Wrench,
+  Eye,
+  FileCode,
+  Timer,
 } from "lucide-react"
 import { AILoader } from "@/components/ui/ai-loader"
 import { Button } from "@/components/ui/button"
@@ -41,6 +51,7 @@ import type {
   McqExercise,
   TrueFalseExercise,
   ExerciseAttempt,
+  ChallengeType,
 } from "@/types/learnings"
 import { cn } from "@/lib/utils"
 import {
@@ -440,6 +451,14 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
 
   const [userCode, setUserCode] = useState(exercise.starterCode)
   const [showSolution, setShowSolution] = useState(false)
+  const [completedGoals, setCompletedGoals] = useState<Set<number>>(new Set())
+  
+  const revealedHintLevel = attempt?.revealedHintLevel ?? 0
+  const tieredHints = exercise.tieredHints ?? []
+  const stepGoals = exercise.stepGoals ?? []
+  const challengeType = exercise.challengeType ?? "fill-blank"
+  const estimatedMinutes = exercise.estimatedMinutes ?? 5
+
   const changedLines = useMemo(() => {
     const starter = exercise.starterCode.split("\n")
     const expected = exercise.expectedSolution.split("\n")
@@ -504,39 +523,95 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
     setUserCode(exercise.starterCode)
     learningsActions.resetAttempt(exercise.id)
     setShowSolution(false)
+    setCompletedGoals(new Set())
+  }
+
+  const handleRevealHint = () => {
+    learningsActions.revealHint(exercise.id)
+  }
+
+  const handleReviewLater = () => {
+    learningsActions.markForReview(exercise.id, 30)
+  }
+
+  const toggleGoal = (idx: number) => {
+    setCompletedGoals((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) {
+        next.delete(idx)
+      } else {
+        next.add(idx)
+      }
+      return next
+    })
   }
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
-          <Code2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Interactive Exercise</span>
+          <ChallengeTypeIcon type={challengeType} />
+          <span className="text-sm font-medium">
+            <ChallengeTypeLabel type={challengeType} />
+          </span>
           <DifficultyBadge difficulty={exercise.difficulty} />
+          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Timer className="h-3 w-3" />
+            ~{estimatedMinutes}m
+          </span>
         </div>
-        {attempt && <StatusBadge status={attempt.status} />}
+        <div className="flex items-center gap-2">
+          {attempt && <StatusBadge status={attempt.status} />}
+          {attempt && attempt.attemptsCount > 0 && (
+            <span className="text-[10px] text-muted-foreground">
+              {attempt.attemptsCount} attempt{attempt.attemptsCount > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="p-4 space-y-4">
         <div className="space-y-2">
-          <p className="text-sm">{exercise.prompt || "Exercise"}</p>
+          <p className="text-sm font-medium">{exercise.prompt || "Exercise"}</p>
           {exercise.topics && exercise.topics.length > 0 && (
             <TopicBadges topics={exercise.topics} />
           )}
         </div>
 
+        {stepGoals.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-xs text-muted-foreground font-medium">Goals</span>
+            <div className="space-y-1">
+              {stepGoals.map((goal, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => toggleGoal(idx)}
+                  className={cn(
+                    "flex items-center gap-2 text-xs w-full text-left py-1 px-2 rounded-md transition-colors",
+                    completedGoals.has(idx)
+                      ? "text-muted-foreground line-through bg-muted/30"
+                      : "text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  {completedGoals.has(idx) ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  )}
+                  {goal}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <span aria-hidden>⌨️</span>
+              <FileCode className="h-3 w-3" />
               {exercise.language.toUpperCase()}
             </span>
-            {exercise.hints && exercise.hints.length > 0 && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <span aria-hidden>✍️</span>
-                {exercise.hints[0]}
-              </span>
-            )}
           </div>
           <div className="rounded-md border overflow-hidden">
             <CodeMirror
@@ -559,15 +634,42 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
           </div>
         </div>
 
+        {tieredHints.length > 0 && revealedHintLevel > 0 && (
+          <div className="space-y-2">
+            {tieredHints
+              .filter((h) => h.level <= revealedHintLevel)
+              .map((h) => (
+                <div
+                  key={h.level}
+                  className={cn(
+                    "p-2.5 rounded-md text-xs flex items-start gap-2",
+                    h.level === 1 && "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                    h.level === 2 && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                    h.level === 3 && "bg-purple-500/10 text-purple-700 dark:text-purple-400"
+                  )}
+                >
+                  <Lightbulb className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    <span className="font-medium">Hint {h.level}: </span>
+                    {h.hint}
+                  </span>
+                </div>
+              ))}
+          </div>
+        )}
+
         {attempt?.feedback && (
           <div
             className={cn(
               "p-3 rounded-lg text-sm",
               attempt.status === "correct"
-                ? "bg-green-500/10 text-green-700 dark:text-green-400"
-                : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                ? "bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
             )}
           >
+            {attempt.status === "correct" && (
+              <CheckCircle2 className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+            )}
             {attempt.feedback}
           </div>
         )}
@@ -617,16 +719,42 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
         )}
 
         <div className="flex items-center justify-between pt-2">
-          <Button variant="ghost" size="sm" onClick={handleReset}>
-            Reset
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={handleReset}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+              Reset
+            </Button>
+            {attempt?.status !== "correct" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReviewLater}
+                className="text-muted-foreground"
+              >
+                <Clock className="h-3.5 w-3.5 mr-1" />
+                Later
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
+            {tieredHints.length > 0 && revealedHintLevel < 3 && attempt?.status !== "correct" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRevealHint}
+                className="text-blue-600 hover:text-blue-700 hover:bg-blue-500/10"
+              >
+                <Lightbulb className="h-3.5 w-3.5 mr-1" />
+                Hint {revealedHintLevel + 1}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowSolution(!showSolution)}
             >
-              {showSolution ? "Hide Solution" : "Show Solution"}
+              <Eye className="h-3.5 w-3.5 mr-1" />
+              {showSolution ? "Hide" : "Solution"}
             </Button>
             <Button
               size="sm"
@@ -643,6 +771,36 @@ function InteractiveCard({ exercise, attempt, provider, modelId, workspaceId, co
       </div>
     </div>
   )
+}
+
+function ChallengeTypeIcon({ type }: { type: ChallengeType }) {
+  switch (type) {
+    case "fix-bug":
+      return <Bug className="h-4 w-4 text-red-500" />
+    case "complete-function":
+      return <FileCode className="h-4 w-4 text-blue-500" />
+    case "refactor":
+      return <Wrench className="h-4 w-4 text-amber-500" />
+    case "predict-output":
+      return <Eye className="h-4 w-4 text-purple-500" />
+    default:
+      return <Code2 className="h-4 w-4 text-muted-foreground" />
+  }
+}
+
+function ChallengeTypeLabel({ type }: { type: ChallengeType }) {
+  switch (type) {
+    case "fix-bug":
+      return "Fix the Bug"
+    case "complete-function":
+      return "Complete Function"
+    case "refactor":
+      return "Refactor"
+    case "predict-output":
+      return "Predict Output"
+    default:
+      return "Fill in the Blank"
+  }
 }
 
 interface McqCardProps {

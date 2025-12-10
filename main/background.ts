@@ -48,6 +48,7 @@ import {
   checkApiKeyAvailable,
   type ConversationInput as OverviewConversationInput,
 } from './services/overview-agent'
+import { generateEnhancedOverview } from './services/enhanced-overview-agent'
 import {
   generateResources,
   addMoreResources,
@@ -59,6 +60,8 @@ import {
   getAvailableProviderInfo,
   type ResourcesProviderId,
 } from './services/resources-agent'
+import { generateDiagram } from './services/diagram-agent'
+import { extractLearnings as extractLearningConcepts } from './services/learnings-agent'
 import {
   listWorkspaces,
   getWorkspaceDetails,
@@ -582,6 +585,58 @@ ipcMain.handle(
 ipcMain.handle('overview:hasApiKey', async () => {
   return checkApiKeyAvailable()
 })
+
+ipcMain.handle(
+  'enhanced-overview:generate',
+  async (
+    _event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+      options?: { tokenBudget?: number; parallelSections?: number }
+    }
+  ) => {
+    return generateEnhancedOverview(
+      {
+        workspaceId: payload.workspaceId,
+        conversationId: payload.conversationId,
+        title: payload.title,
+        bubbles: payload.bubbles,
+      },
+      payload.options
+    )
+  }
+)
+
+ipcMain.handle(
+  'diagram:generate',
+  async (
+    _event,
+    payload: {
+      type: 'architecture' | 'flowchart' | 'sequence' | 'component' | 'state'
+      conversationExcerpt: string
+    }
+  ) => {
+    return generateDiagram(payload)
+  }
+)
+
+ipcMain.handle(
+  'learnings:extract-concepts',
+  async (
+    _event,
+    payload: {
+      workspaceId: string
+      conversationId: string
+      title: string
+      bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
+    }
+  ) => {
+    return extractLearningConcepts(payload)
+  }
+)
 
 ipcMain.handle('todos:list', (_event, options?: { limit?: number; offset?: number; search?: string }) => {
   return listTodos(options)
