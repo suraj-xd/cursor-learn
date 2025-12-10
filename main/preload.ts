@@ -312,6 +312,8 @@ const api = {
       bubbles: Array<{ type: 'user' | 'ai'; text: string; timestamp?: number }>
       options?: { tokenBudget?: number; parallelSections?: number }
     }) => ipcRenderer.invoke('enhanced-overview:generate', payload) as Promise<OverviewStructure>,
+    get: (payload: { workspaceId: string; conversationId: string }) =>
+      ipcRenderer.invoke('enhanced-overview:get', payload) as Promise<OverviewStructure | null>,
   },
   diagram: {
     generate: (payload: {

@@ -9,19 +9,30 @@ import {
   getApiKey,
   listApiKeys,
 } from './agent-storage'
+import { estimateTokens } from './compact-agent'
 
 const TAVILY_API_BASE = 'https://api.tavily.com'
 const PERPLEXITY_API_BASE = 'https://api.perplexity.ai'
 
+const TOKEN_BUDGETS = {
+  default: 8000,
+  medium: 6000,
+  small: 4000,
+  minimal: 2000,
+}
+
+const FALLBACK_BUDGETS = [
+  TOKEN_BUDGETS.default,
+  TOKEN_BUDGETS.medium,
+  TOKEN_BUDGETS.small,
+  TOKEN_BUDGETS.minimal,
+]
+
 export type ResourcesProviderId = 'auto' | 'perplexity' | 'tavily' | 'google' | 'openai' | 'anthropic'
 
-export type ResourceCategory = 
-  | 'fundamentals'
-  | 'documentation'
-  | 'tutorials'
-  | 'videos'
-  | 'deep_dives'
-  | 'tools'
+export type ResourceCategory = 'core' | 'deep_dive' | 'practical' | 'reference'
+
+export type ResourceQuality = 'essential' | 'recommended' | 'supplementary'
 
 type ConversationAnalysis = {
   coreProblem: string
@@ -48,13 +59,87 @@ type Resource = {
   title: string
   url: string
   description: string
-  relevanceReason?: string
+  whyUseful: string
+  quality: ResourceQuality
+  relevanceScore: number
   thumbnail?: string
   source: 'ai' | 'tavily' | 'perplexity'
   embedUrl?: string
   favicon?: string
   domain?: string
+  author?: string
   createdAt: number
+}
+
+type ParsedTurn = {
+  index: number
+  role: 'user' | 'ai'
+  content: string
+  tokenCount: number
+  importance: 'high' | 'medium' | 'low'
+  importanceScore: number
+  hasCode: boolean
+  hasError: boolean
+}
+
+const CODE_BLOCK_REGEX = /```[\s\S]*?```/g
+const ERROR_PATTERNS = [/error:/i, /exception:/i, /failed:/i, /typeerror:/i]
+const HIGH_IMPORTANCE_KEYWORDS = ['important', 'critical', 'key', 'solved', 'fixed', 'works']
+const LOW_IMPORTANCE_KEYWORDS = ['thanks', 'thank you', 'got it', 'ok', 'okay']
+
+function parseAndScoreBubbles(bubbles: ConversationBubble[]): ParsedTurn[] {
+  return bubbles.map((bubble, index) => {
+    const hasCode = CODE_BLOCK_REGEX.test(bubble.text)
+    const hasError = ERROR_PATTERNS.some((p) => p.test(bubble.text))
+    const lowered = bubble.text.toLowerCase()
+
+    let score = 5
+    if (hasCode) score += 2
+    if (hasError) score += 1
+    if (HIGH_IMPORTANCE_KEYWORDS.some((kw) => lowered.includes(kw))) score += 1
+    if (LOW_IMPORTANCE_KEYWORDS.some((kw) => lowered.includes(kw))) score -= 2
+    if (bubble.text.length < 50) score -= 1
+
+    const clamped = Math.max(1, Math.min(10, score))
+
+    return {
+      index,
+      role: bubble.type,
+      content: bubble.text,
+      tokenCount: estimateTokens(bubble.text),
+      importance: clamped >= 8 ? 'high' : clamped >= 5 ? 'medium' : 'low',
+      importanceScore: clamped,
+      hasCode,
+      hasError,
+    }
+  })
+}
+
+function truncateForBudget(turns: ParsedTurn[], budget: number): ParsedTurn[] {
+  let total = turns.reduce((sum, t) => sum + t.tokenCount, 0)
+  if (total <= budget) return turns
+
+  const preserved = new Set<number>()
+  for (let i = 0; i < Math.min(3, turns.length); i++) preserved.add(i)
+  for (let i = Math.max(0, turns.length - 5); i < turns.length; i++) preserved.add(i)
+
+  const sorted = [...turns].sort((a, b) => a.importanceScore - b.importanceScore)
+
+  const drop = new Set<number>()
+  for (const t of sorted) {
+    if (total <= budget) break
+    if (preserved.has(t.index)) continue
+    drop.add(t.index)
+    total -= t.tokenCount
+  }
+
+  return turns.filter((t) => !drop.has(t.index))
+}
+
+function formatTurnsAsText(turns: ParsedTurn[]): string {
+  return turns
+    .map((t) => `[${t.role.toUpperCase()}]: ${t.content}`)
+    .join('\n\n')
 }
 
 type GenerateInput = {
@@ -131,8 +216,10 @@ type RawResource = {
   title?: string
   url?: string
   description?: string
-  relevanceReason?: string
-  category?: string
+  whyUseful?: string
+  quality?: string
+  relevanceScore?: number
+  author?: string
 }
 
 function parseCategorizedResourcesResponse(content: string): { 
@@ -145,15 +232,13 @@ function parseCategorizedResourcesResponse(content: string): {
     const parsed = JSON.parse(jsonMatch[0])
     
     const categoryMap: Record<ResourceCategory, RawResource[]> = {
-      fundamentals: [],
-      documentation: [],
-      tutorials: [],
-      videos: [],
-      deep_dives: [],
-      tools: [],
+      core: [],
+      deep_dive: [],
+      practical: [],
+      reference: [],
     }
     
-    const categoryKeys: ResourceCategory[] = ['fundamentals', 'documentation', 'tutorials', 'videos', 'deep_dives', 'tools']
+    const categoryKeys: ResourceCategory[] = ['core', 'deep_dive', 'practical', 'reference']
     
     for (const category of categoryKeys) {
       const items = parsed[category]
@@ -186,6 +271,10 @@ function enrichResource(
     type = 'article'
   }
 
+  const quality: ResourceQuality = 
+    raw.quality === 'essential' ? 'essential' :
+    raw.quality === 'recommended' ? 'recommended' : 'supplementary'
+
   const resource: Resource = {
     id: generateResourceId(),
     type,
@@ -193,8 +282,11 @@ function enrichResource(
     title: raw.title || 'Untitled Resource',
     url: raw.url || '',
     description: raw.description || '',
-    relevanceReason: raw.relevanceReason,
+    whyUseful: raw.whyUseful || raw.description || '',
+    quality,
+    relevanceScore: typeof raw.relevanceScore === 'number' ? raw.relevanceScore : 5,
     source,
+    author: raw.author,
     createdAt: Date.now(),
     domain: getDomain(raw.url || ''),
   }
@@ -256,8 +348,8 @@ async function generateResourcesFromAnalysis(
 
   const result = await generate({
     prompt,
-    temperature: 0.4,
-    maxTokens: 12000,
+    temperature: 0.3,
+    maxTokens: 6000,
     role: 'resources',
     maxRetries: 3,
   })
@@ -269,7 +361,7 @@ async function generateResourcesFromAnalysis(
   }
   
   const resources: Resource[] = []
-  const categoryKeys: ResourceCategory[] = ['fundamentals', 'documentation', 'tutorials', 'videos', 'deep_dives', 'tools']
+  const categoryKeys: ResourceCategory[] = ['core', 'deep_dive', 'practical', 'reference']
   
   for (const category of categoryKeys) {
     const items = parsed.categories[category] || []
@@ -279,6 +371,8 @@ async function generateResourcesFromAnalysis(
       }
     }
   }
+  
+  resources.sort((a, b) => b.relevanceScore - a.relevanceScore)
   
   return resources
 }
@@ -362,13 +456,13 @@ For each resource, explain the NON-OBVIOUS connection to their work.`
     if (urlMatch && currentTitle) {
       const url = urlMatch[0].replace(/[)\].,;:]+$/, '')
       
-      let category: ResourceCategory = 'tutorials'
+      let category: ResourceCategory = 'practical'
       if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        category = 'videos'
+        category = 'deep_dive'
       } else if (url.includes('github.com')) {
-        category = 'tools'
+        category = 'practical'
       } else if (url.includes('docs.') || url.includes('.dev/') || url.includes('developer.')) {
-        category = 'documentation'
+        category = 'reference'
       }
       
       const nextLines = lines.slice(i + 1, i + 3).join(' ')
@@ -378,7 +472,9 @@ For each resource, explain the NON-OBVIOUS connection to their work.`
         title: currentTitle || `Resource from ${getDomain(url)}`,
         url,
         description: currentDescription || `Learning resource about ${analysis.technologies[0] || 'programming'}`,
-        relevanceReason: `Found via Perplexity research for: ${analysis.coreProblem}`,
+        whyUseful: `Found via Perplexity research for: ${analysis.coreProblem}`,
+        quality: 'recommended',
+        relevanceScore: 6,
       }, category, 'perplexity'))
       
       currentTitle = ''
@@ -432,30 +528,32 @@ async function searchWithTavily(query: string, maxResults = 8): Promise<Resource
   const data = await response.json()
   
   return (data.results || []).map((result: { title: string; url: string; content: string }) => {
-    let category: ResourceCategory = 'tutorials'
+    let category: ResourceCategory = 'practical'
     if (result.url.includes('youtube.com') || result.url.includes('youtu.be')) {
-      category = 'videos'
+      category = 'deep_dive'
     } else if (result.url.includes('github.com')) {
-      category = 'tools'
+      category = 'practical'
     } else if (result.url.includes('docs.') || result.url.includes('.dev') || result.url.includes('developer.')) {
-      category = 'documentation'
+      category = 'reference'
     }
     
     return enrichResource({
       title: result.title,
       url: result.url,
       description: result.content?.slice(0, 200) || '',
-      relevanceReason: 'Found via Tavily web search',
+      whyUseful: 'Found via Tavily web search',
+      quality: 'recommended',
+      relevanceScore: 5,
     }, category, 'tavily')
   })
 }
 
 export async function generateResources(input: GenerateInput): Promise<GenerateResult> {
-  const conversationText = formatBubblesAsText(input.bubbles)
-  
-  if (!conversationText.trim()) {
+  if (!input.bubbles.length) {
     throw new Error('No conversation content to analyze. Please select a conversation with messages.')
   }
+
+  const parsedTurns = parseAndScoreBubbles(input.bubbles)
   
   const preferredProvider = input.preferredProvider || 'auto'
   const perplexityKey = getApiKey('perplexity')
@@ -483,69 +581,96 @@ export async function generateResources(input: GenerateInput): Promise<GenerateR
   if (!usePerplexity && !useTavily && !useAI) {
     throw new Error('No API key configured. Please add an API key in Settings → LLM.')
   }
-  
-  const analysis = await analyzeConversation(conversationText, input.title)
-  
+
+  let analysis: ConversationAnalysis | null = null
   let resources: Resource[] = []
   let source: 'ai' | 'perplexity' | 'tavily' = 'ai'
-  
-  if (usePerplexity) {
+  let lastError: Error | null = null
+
+  for (const budget of FALLBACK_BUDGETS) {
     try {
-      resources = await runPerplexityResearch(analysis)
-      source = 'perplexity'
-    } catch (error) {
-      console.error('Perplexity research failed, falling back to AI:', error)
-      usePerplexity = false
-    }
-  }
-  
-  if (useTavily && resources.length < 10) {
-    try {
-      const searchQueries = [
-        `${analysis.coreProblem} tutorial ${analysis.skillLevel}`,
-        `${analysis.solutionApproach} guide`,
-        ...analysis.conceptsUsed.slice(0, 2).map(c => `${c} explained`),
-      ]
+      const truncated = truncateForBudget(parsedTurns, budget)
+      const conversationText = formatTurnsAsText(truncated)
       
-      const searchPromises = searchQueries.map(q => 
-        searchWithTavily(q, 5).catch(() => [])
-      )
-      const searchResults = await Promise.all(searchPromises)
-      const tavilyResources = searchResults.flat()
-      
-      const existingUrls = new Set(resources.map(r => r.url))
-      const newTavilyResources = tavilyResources.filter(r => !existingUrls.has(r.url))
-      resources = [...resources, ...newTavilyResources]
-      
-      if (source === 'ai') source = 'tavily'
-    } catch (error) {
-      console.error('Tavily search failed:', error)
-    }
-  }
-  
-  if (resources.length < 20 && useAI) {
-    try {
-      const aiResources = await generateResourcesFromAnalysis(analysis)
-      
-      const existingUrls = new Set(resources.map(r => r.url))
-      const newAiResources = aiResources.filter(r => !existingUrls.has(r.url))
-      resources = [...resources, ...newAiResources]
-    } catch (error) {
-      console.error('AI resource generation failed:', error)
-      if (resources.length === 0) {
-        throw error
+      if (truncated.length < parsedTurns.length) {
+        console.log(`Resources: truncated to ${truncated.length}/${parsedTurns.length} turns for budget ${budget}`)
       }
+
+      analysis = await analyzeConversation(conversationText, input.title)
+      
+      if (usePerplexity) {
+        try {
+          resources = await runPerplexityResearch(analysis)
+          source = 'perplexity'
+        } catch (error) {
+          console.error('Perplexity research failed, falling back to AI:', error)
+          usePerplexity = false
+        }
+      }
+      
+      if (useTavily && resources.length < 6) {
+        try {
+          const searchQueries = [
+            `${analysis.coreProblem} ${analysis.skillLevel} tutorial`,
+            ...analysis.technologies.slice(0, 2).map(t => `${t} best practices`),
+          ]
+          
+          const searchPromises = searchQueries.map(q => 
+            searchWithTavily(q, 4).catch(() => [])
+          )
+          const searchResults = await Promise.all(searchPromises)
+          const tavilyResources = searchResults.flat()
+          
+          const existingUrls = new Set(resources.map(r => r.url))
+          const newTavilyResources = tavilyResources.filter(r => !existingUrls.has(r.url))
+          resources = [...resources, ...newTavilyResources]
+          
+          if (source === 'ai') source = 'tavily'
+        } catch (error) {
+          console.error('Tavily search failed:', error)
+        }
+      }
+      
+      if (resources.length < 8 && useAI) {
+        try {
+          const aiResources = await generateResourcesFromAnalysis(analysis)
+          
+          const existingUrls = new Set(resources.map(r => r.url))
+          const newAiResources = aiResources.filter(r => !existingUrls.has(r.url))
+          resources = [...resources, ...newAiResources]
+        } catch (error) {
+          console.error('AI resource generation failed:', error)
+          if (resources.length === 0) {
+            throw error
+          }
+        }
+      }
+
+      if (resources.length > 0) {
+        break
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.warn(`Resources generation failed with budget ${budget}, trying smaller...`)
+      continue
     }
   }
   
   if (resources.length === 0) {
-    throw new Error('Failed to find any resources. Please try again.')
+    throw lastError ?? new Error('Failed to find any resources. Please try again.')
   }
   
-  const topics = [...new Set([
-    ...analysis.conceptsUsed.slice(0, 5),
-    ...analysis.technologies.slice(0, 3),
-  ])]
+  resources.sort((a, b) => {
+    const qualityOrder = { essential: 0, recommended: 1, supplementary: 2 }
+    const qDiff = qualityOrder[a.quality] - qualityOrder[b.quality]
+    if (qDiff !== 0) return qDiff
+    return b.relevanceScore - a.relevanceScore
+  })
+  
+  const topics = Array.from(new Set([
+    ...analysis!.conceptsUsed.slice(0, 5),
+    ...analysis!.technologies.slice(0, 3),
+  ]))
   
   const availableProviders = getAvailableProviders()
   const modelUsed = availableProviders.length > 0 
@@ -566,7 +691,7 @@ export async function generateResources(input: GenerateInput): Promise<GenerateR
     },
   })
   
-  return { resources, topics, analysis }
+  return { resources, topics, analysis: analysis! }
 }
 
 export async function addMoreResources(input: GenerateInput & { existingResources: Resource[] }): Promise<GenerateResult> {
@@ -574,54 +699,43 @@ export async function addMoreResources(input: GenerateInput & { existingResource
     throw new Error('No API key configured. Please add an API key in Settings → LLM.')
   }
 
-  const conversationText = formatBubblesAsText(input.bubbles)
+  const parsedTurns = parseAndScoreBubbles(input.bubbles)
+  const truncated = truncateForBudget(parsedTurns, TOKEN_BUDGETS.medium)
+  const conversationText = formatTurnsAsText(truncated)
+  
   const analysis = await analyzeConversation(conversationText, input.title)
   
-  const existingUrls = input.existingResources.map(r => r.url).join('\n- ')
+  const existingTitles = input.existingResources.map(r => r.title).join(', ')
   
-  const prompt = `You are a programming educator known for finding the UNEXPECTED resources.
+  const prompt = `Find 4-6 NEW resources different from what they already have.
 
-THE USER'S SITUATION:
-- Problem they solved: ${analysis.coreProblem}
-- Solution approach: ${analysis.solutionApproach}
-- Concepts involved: ${analysis.conceptsUsed.join(', ')}
+CONTEXT:
+- Problem: ${analysis.coreProblem}
+- Approach: ${analysis.solutionApproach}
+- Technologies: ${analysis.technologies.join(', ')}
 - Skill level: ${analysis.skillLevel}
 
-EXISTING RESOURCES (DO NOT REPEAT):
-${existingUrls}
+ALREADY HAVE: ${existingTitles}
 
-Generate 8-10 NEW resources that will SURPRISE and CHALLENGE them.
+Find resources that:
+- Cover a different angle or approach
+- Go deeper on something they touched
+- Introduce related tools or techniques
 
-AVOID:
-- Anything similar to what they already have
-- Basic tutorials or getting started guides
-- Obvious Google-first-page results
+Categories: core, deep_dive, practical, reference
 
-FIND:
-- The controversial opinion piece that challenges their approach
-- A completely different way to solve the same problem
-- The obscure library that does it better
-- Cross-domain knowledge (how other fields solve this)
-- Advanced performance or security considerations
-
-OUTPUT FORMAT (JSON only):
+OUTPUT (JSON only):
 {
-  "fundamentals": [...],
-  "documentation": [...],
-  "tutorials": [...],
-  "videos": [...],
-  "deep_dives": [...],
-  "tools": [...]
-}
-
-Each resource: {"type": "...", "title": "...", "url": "...", "description": "...", "relevanceReason": "..."}
-
-JSON only, no markdown.`
+  "core": [{"type": "...", "title": "...", "url": "...", "description": "...", "whyUseful": "...", "quality": "essential|recommended|supplementary", "relevanceScore": 7}],
+  "deep_dive": [...],
+  "practical": [...],
+  "reference": [...]
+}`
 
   const result = await generate({
     prompt,
-    temperature: 0.4,
-    maxTokens: 8192,
+    temperature: 0.3,
+    maxTokens: 4000,
     role: 'resources',
     maxRetries: 3,
   })
@@ -634,7 +748,7 @@ JSON only, no markdown.`
   
   const newResources: Resource[] = []
   const existingUrlSet = new Set(input.existingResources.map(r => r.url))
-  const categoryKeys: ResourceCategory[] = ['fundamentals', 'documentation', 'tutorials', 'videos', 'deep_dives', 'tools']
+  const categoryKeys: ResourceCategory[] = ['core', 'deep_dive', 'practical', 'reference']
   
   for (const category of categoryKeys) {
     const items = parsed.categories[category] || []
@@ -650,10 +764,16 @@ JSON only, no markdown.`
   }
   
   const allResources = [...input.existingResources, ...newResources]
+  allResources.sort((a, b) => {
+    const qualityOrder = { essential: 0, recommended: 1, supplementary: 2 }
+    const qDiff = qualityOrder[a.quality] - qualityOrder[b.quality]
+    if (qDiff !== 0) return qDiff
+    return b.relevanceScore - a.relevanceScore
+  })
   
   const existingRecord = getResources(input.workspaceId, input.conversationId)
   const existingTopics = existingRecord?.topics || []
-  const mergedTopics = [...new Set([...existingTopics, ...analysis.technologies.slice(0, 3)])]
+  const mergedTopics = Array.from(new Set([...existingTopics, ...analysis.technologies.slice(0, 3)]))
   
   const availableProviders = getAvailableProviders()
   const modelUsed = availableProviders.length > 0 

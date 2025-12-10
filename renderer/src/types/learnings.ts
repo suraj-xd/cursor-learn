@@ -135,4 +135,6 @@ export type LearningsState = {
   generationError: string | null
   evaluationError: string | null
   activeTab: ExerciseType
+  generationJobId: string | null
+  generationStatus: 'idle' | 'loading' | 'success' | 'error'
 }

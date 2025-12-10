@@ -108,6 +108,7 @@ export function LearningsView({
     activeTab,
     isGenerating,
     generationError,
+    generationStatus,
   } = useLearningsStore()
   const { autoRunLearnings, setAutoRunLearnings } = useSettingsStore()
 
@@ -173,7 +174,7 @@ export function LearningsView({
           conversationTitle,
           selectedProvider,
           selectedModel,
-          { workspaceId, conversationId }
+          { workspaceId, conversationId, bubbles }
         )
       }
     }
@@ -194,14 +195,14 @@ export function LearningsView({
       conversationTitle,
       selectedProvider,
       selectedModel,
-      { workspaceId, conversationId },
+      { workspaceId, conversationId, bubbles },
       activeTab,
       3,
       customRequest
     )
     setShowAddDialog(false)
     setUserRequest("")
-  }, [contextText, conversationTitle, selectedProvider, selectedModel, activeTab, workspaceId, conversationId])
+  }, [contextText, conversationTitle, selectedProvider, selectedModel, activeTab, workspaceId, conversationId, bubbles])
 
   const handleRegenerate = useCallback(() => {
     learningsActions.clearExercises()
@@ -211,9 +212,9 @@ export function LearningsView({
       conversationTitle,
       selectedProvider,
       selectedModel,
-      { workspaceId, conversationId }
+      { workspaceId, conversationId, bubbles }
     )
-  }, [contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId])
+  }, [contextText, conversationTitle, selectedProvider, selectedModel, workspaceId, conversationId, bubbles])
 
   const filteredExercises = useMemo(() => {
     return exercises.filter((ex) => ex.type === activeTab)
@@ -286,6 +287,11 @@ export function LearningsView({
               <RefreshCw className="w-3.5 h-3.5" />
               Regenerate
             </DropdownMenuItem>
+            {isGenerating && (
+              <DropdownMenuItem onClick={learningsActions.cancelGeneration} className="gap-2 cursor-pointer">
+                Cancel
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-sm">Auto Run</span>
@@ -304,6 +310,15 @@ export function LearningsView({
           {isGenerating && filteredExercises.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
               <AILoader variant="compact" />
+              <p className="text-xs text-muted-foreground mt-2">Generating exercises...</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-3"
+                onClick={learningsActions.cancelGeneration}
+              >
+                Cancel
+              </Button>
             </div>
           ) : filteredExercises.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
@@ -339,7 +354,15 @@ export function LearningsView({
               {generationError && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <p>{generationError}</p>
+                  <p className="flex-1">{generationError}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRegenerate}
+                    className="shrink-0"
+                  >
+                    Retry
+                  </Button>
                 </div>
               )}
 

@@ -15,6 +15,7 @@ type OverviewState = {
       error: string | null
     }
   >
+  load: (args: { workspaceId: string; conversationId: string }) => Promise<void>
   generate: (args: {
     workspaceId: string
     conversationId: string
@@ -26,6 +27,36 @@ type OverviewState = {
 export const useOverviewStore = create<OverviewState>()(
   subscribeWithSelector((set) => ({
     items: {},
+    load: async ({ workspaceId, conversationId }) => {
+      set((state) => ({
+        items: {
+          ...state.items,
+          [conversationId]: state.items[conversationId] ?? { status: 'idle', overview: null, error: null },
+        },
+      }))
+      try {
+        const existing = await enhancedOverviewIpc.get({ workspaceId, conversationId })
+        if (existing) {
+          set((state) => ({
+            items: {
+              ...state.items,
+              [conversationId]: { status: 'ready', overview: existing, error: null },
+            },
+          }))
+        }
+      } catch (err) {
+        set((state) => ({
+          items: {
+            ...state.items,
+            [conversationId]: {
+              status: 'error',
+              overview: state.items[conversationId]?.overview ?? null,
+              error: err instanceof Error ? err.message : 'Failed to load overview',
+            },
+          },
+        }))
+      }
+    },
     generate: async ({ workspaceId, conversationId, title, bubbles }) => {
       set((state) => ({
         items: {

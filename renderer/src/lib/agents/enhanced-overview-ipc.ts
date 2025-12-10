@@ -82,4 +82,8 @@ export const enhancedOverviewIpc = {
     const ipc = ensureIpc()
     return ipc.enhancedOverview.generate(payload)
   },
+  get: async (payload: { workspaceId: string; conversationId: string }): Promise<OverviewStructure | null> => {
+    const ipc = ensureIpc()
+    return ipc.enhancedOverview.get(payload)
+  },
 }

@@ -24,6 +24,7 @@ import {
   getUsageByModel,
   getUsageByDay,
   listUsageRecords,
+  getOverviewStructure,
   saveLearnings,
   getLearnings,
   deleteLearnings,
@@ -607,6 +608,13 @@ ipcMain.handle(
       },
       payload.options
     )
+  }
+)
+
+ipcMain.handle(
+  'enhanced-overview:get',
+  async (_event, payload: { workspaceId: string; conversationId: string }) => {
+    return getOverviewStructure(payload.workspaceId, payload.conversationId)
   }
 )
 

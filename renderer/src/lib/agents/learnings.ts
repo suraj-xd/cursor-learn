@@ -17,12 +17,6 @@ import type {
 } from '@/types/learnings'
 import type { ProviderId } from '@/lib/ai/config'
 
-type ConversationBubble = {
-  type: 'user' | 'ai'
-  text: string
-  timestamp?: number
-}
-
 function hashPrompt(prompt: string): string {
   let hash = 0
   for (let i = 0; i < prompt.length; i++) {
@@ -173,9 +167,8 @@ export async function generateExercises(
   modelId: string,
   opts?: { workspaceId?: string; conversationId?: string }
 ): Promise<GenerateExercisesResponse> {
-  const budgetsToTry = request.tokenBudget
-    ? [request.tokenBudget, ...FALLBACK_BUDGETS.filter((b) => b < request.tokenBudget)]
-    : FALLBACK_BUDGETS
+  const primaryBudget = request.tokenBudget ?? TOKEN_BUDGETS.default
+  const budgetsToTry = [primaryBudget, ...FALLBACK_BUDGETS.filter((b) => b < primaryBudget)]
 
   let lastError: Error | null = null
 
@@ -204,7 +197,11 @@ async function generateExercisesWithBudget(
 
   let chatContext: string
   if (request.bubbles && request.bubbles.length > 0) {
-    const prepared = prepareContextForGeneration(request.bubbles, tokenBudget)
+    const prepared = prepareContextForGeneration(
+      request.bubbles,
+      tokenBudget,
+      opts?.conversationId
+    )
     chatContext = prepared.context
     if (prepared.truncated) {
       console.log(`Learnings: truncated context to ${prepared.stats.totalTurns} turns for budget ${tokenBudget}`)

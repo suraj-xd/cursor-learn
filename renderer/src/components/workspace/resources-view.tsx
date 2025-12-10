@@ -28,6 +28,11 @@ import {
   Wrench,
   Check,
   Zap,
+  Target,
+  Code,
+  X,
+  Star,
+  Copy,
   type LucideIcon,
 } from "lucide-react"
 import { AILoader } from "@/components/ui/ai-loader"
@@ -61,8 +66,8 @@ import { useResourcesStore, resourcesActions } from "@/store/resources"
 import { useSettingsStore } from "@/store/settings"
 import { ApiKeyDialog } from "@/components/comman/api-key-dialog"
 import type { ChatTab } from "@/types/workspace"
-import type { Resource, ResourceType, ResourceCategory, ResourcesProviderId } from "@/types/resources"
-import { CATEGORY_INFO } from "@/types/resources"
+import type { Resource, ResourceType, ResourceCategory, ResourcesProviderId, ResourceQuality } from "@/types/resources"
+import { CATEGORY_INFO, QUALITY_INFO } from "@/types/resources"
 import { RESOURCES_PROVIDER_OPTIONS } from "@/lib/ai/config"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
@@ -91,11 +96,14 @@ const RESOURCE_COLORS: Record<ResourceType, string> = {
 }
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  target: Target,
+  microscope: Microscope,
+  code: Code,
+  "book-open": BookOpen,
   brain: Brain,
   "scroll-text": ScrollText,
   "trending-up": TrendingUp,
   presentation: Presentation,
-  microscope: Microscope,
   wrench: Wrench,
 }
 
@@ -136,13 +144,32 @@ function ResearchBanner({ hasPerplexity, hasTavily }: { hasPerplexity: boolean; 
   )
 }
 
+function QualityBadge({ quality }: { quality: ResourceQuality }) {
+  const info = QUALITY_INFO[quality]
+  if (quality === 'supplementary') return null
+  
+  return (
+    <span className={cn("text-[9px] font-medium", info.color)}>
+      {quality === 'essential' && <Star className="h-2.5 w-2.5 inline mr-0.5 fill-current" />}
+      {info.label}
+    </span>
+  )
+}
+
 function ResourceCard({ resource }: { resource: Resource }) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [showRelevance, setShowRelevance] = useState(false)
+  const [showWhy, setShowWhy] = useState(false)
+  const [copied, setCopied] = useState(false)
   const Icon = RESOURCE_ICONS[resource.type]
   const iconColor = RESOURCE_COLORS[resource.type]
 
   const canEmbed = resource.type === "video" && resource.embedUrl
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(resource.url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -160,13 +187,14 @@ function ResourceCard({ resource }: { resource: Resource }) {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {resource.favicon && (
                 <img src={resource.favicon} alt="" className="w-4 h-4 rounded-sm" />
               )}
               <span className="text-[10px] text-muted-foreground truncate">
                 {resource.domain}
               </span>
+              <QualityBadge quality={resource.quality} />
               {resource.source !== "ai" && (
                 <Badge variant="secondary" className="text-[8px] px-1 py-0 h-4">
                   <Search className="h-2 w-2 mr-0.5" />
@@ -175,22 +203,25 @@ function ResourceCard({ resource }: { resource: Resource }) {
               )}
             </div>
             <h4 className="text-sm font-medium mt-1 line-clamp-2">{resource.title}</h4>
+            {resource.author && (
+              <p className="text-[10px] text-muted-foreground">by {resource.author}</p>
+            )}
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
               {resource.description}
             </p>
-            {resource.relevanceReason && (
+            {resource.whyUseful && (
               <button
                 type="button"
                 className="text-[10px] text-primary/70 hover:text-primary mt-1 flex items-center gap-1"
-                onClick={() => setShowRelevance(!showRelevance)}
+                onClick={() => setShowWhy(!showWhy)}
               >
                 <Lightbulb className="h-3 w-3" />
-                {showRelevance ? "Hide why" : "Why this?"}
+                {showWhy ? "Hide" : "Why this helps"}
               </button>
             )}
-            {showRelevance && resource.relevanceReason && (
-              <p className="text-[10px] text-muted-foreground mt-1 p-2 bg-muted/50 rounded">
-                {resource.relevanceReason}
+            {showWhy && resource.whyUseful && (
+              <p className="text-[10px] text-muted-foreground mt-1 p-2 bg-primary/5 border border-primary/10 rounded">
+                {resource.whyUseful}
               </p>
             )}
           </div>
@@ -207,6 +238,15 @@ function ResourceCard({ resource }: { resource: Resource }) {
               {isExpanded ? "Hide" : "Watch"}
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={handleCopy}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -357,11 +397,13 @@ export function ResourcesView({
     topics,
     analysis,
     isGenerating,
+    generationStatus,
     generationError,
     hasTavilyKey,
     hasPerplexityKey,
     availableProviders,
     hasApiKey,
+    lastGeneratedAt,
   } = useResourcesStore()
 
   const { autoRunResources, setAutoRunResources, resourcesProvider, setResourcesProvider } = useSettingsStore()
@@ -433,20 +475,18 @@ export function ResourcesView({
 
   const groupedByCategory = useMemo(() => {
     const groups: Record<ResourceCategory, Resource[]> = {
-      fundamentals: [],
-      documentation: [],
-      tutorials: [],
-      videos: [],
-      deep_dives: [],
-      tools: [],
+      core: [],
+      deep_dive: [],
+      practical: [],
+      reference: [],
     }
     
     for (const r of resources) {
-      const category = r.category || "tutorials"
+      const category = r.category || "practical"
       if (groups[category]) {
         groups[category].push(r)
       } else {
-        groups.tutorials.push(r)
+        groups.practical.push(r)
       }
     }
     
@@ -454,12 +494,10 @@ export function ResourcesView({
   }, [resources])
 
   const categoryOrder: ResourceCategory[] = [
-    "fundamentals",
-    "documentation",
-    "tutorials",
-    "videos",
-    "deep_dives",
-    "tools",
+    "core",
+    "deep_dive",
+    "practical",
+    "reference",
   ]
 
   if (!hasApiKey && !hasPerplexityKey) {
@@ -545,8 +583,20 @@ export function ResourcesView({
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
           {isGenerating && resources.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
               <AILoader variant="compact" />
+              <p className="text-xs text-muted-foreground">
+                {generationStatus === 'analyzing' ? 'Analyzing conversation...' : 'Finding resources...'}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => resourcesActions.cancelGeneration()}
+              >
+                <X className="h-3 w-3 mr-1" />
+                Cancel
+              </Button>
             </div>
           ) : resources.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
@@ -602,7 +652,7 @@ export function ResourcesView({
                   key={category}
                   category={category}
                   resources={groupedByCategory[category]}
-                  defaultOpen={category === "fundamentals" || category === "documentation"}
+                  defaultOpen={category === "core" || category === "practical"}
                 />
               ))}
 

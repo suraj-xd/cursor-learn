@@ -1,7 +1,7 @@
 "use client"
 
 import { create } from "zustand"
-import type { Resource, ResourcesState, ConversationAnalysis, ResourcesProviderId } from "@/types/resources"
+import type { Resource, ResourcesState, ConversationAnalysis, ResourcesProviderId, GenerationStatus } from "@/types/resources"
 import { resourcesIpc } from "@/lib/agents/resources-ipc"
 
 type ConversationBubble = {
@@ -15,6 +15,7 @@ type ResourcesStore = ResourcesState & {
   currentConversationId: string | null
   hasApiKey: boolean
   availableProvider: string | null
+  abortController: AbortController | null
   loadCached: (workspaceId: string, conversationId: string) => Promise<boolean>
   generateResources: (
     workspaceId: string,
@@ -30,6 +31,7 @@ type ResourcesStore = ResourcesState & {
     bubbles: ConversationBubble[],
     userRequest?: string
   ) => Promise<void>
+  cancelGeneration: () => void
   clearResources: () => void
   checkProviderStatus: () => Promise<void>
 }
@@ -39,6 +41,7 @@ export const useResourcesStore = create<ResourcesStore>((set, get) => ({
   topics: [],
   analysis: null,
   isGenerating: false,
+  generationStatus: 'idle' as GenerationStatus,
   generationError: null,
   hasTavilyKey: false,
   hasPerplexityKey: false,
@@ -47,6 +50,8 @@ export const useResourcesStore = create<ResourcesStore>((set, get) => ({
   availableProvider: null,
   currentWorkspaceId: null,
   currentConversationId: null,
+  lastGeneratedAt: null,
+  abortController: null,
 
   loadCached: async (workspaceId, conversationId) => {
     const state = get()
@@ -93,14 +98,20 @@ export const useResourcesStore = create<ResourcesStore>((set, get) => ({
     const state = get()
     if (state.isGenerating) return
 
+    const abortController = new AbortController()
+
     set({
       isGenerating: true,
+      generationStatus: 'analyzing',
       generationError: null,
       currentWorkspaceId: workspaceId,
       currentConversationId: conversationId,
+      abortController,
     })
 
     try {
+      set({ generationStatus: 'generating' })
+
       const result = await resourcesIpc.generate({
         workspaceId,
         conversationId,
@@ -110,16 +121,25 @@ export const useResourcesStore = create<ResourcesStore>((set, get) => ({
         preferredProvider: opts?.preferredProvider,
       })
 
+      if (abortController.signal.aborted) return
+
       set({
         resources: result.resources,
         topics: result.topics,
         analysis: result.analysis || null,
         isGenerating: false,
+        generationStatus: 'complete',
+        lastGeneratedAt: Date.now(),
+        abortController: null,
       })
     } catch (error) {
+      if (abortController.signal.aborted) return
+      
       set({
         isGenerating: false,
+        generationStatus: 'error',
         generationError: error instanceof Error ? error.message : "Failed to generate resources",
+        abortController: null,
       })
     }
   },
@@ -154,6 +174,18 @@ export const useResourcesStore = create<ResourcesStore>((set, get) => ({
     }
   },
 
+  cancelGeneration: () => {
+    const state = get()
+    if (state.abortController) {
+      state.abortController.abort()
+    }
+    set({
+      isGenerating: false,
+      generationStatus: 'idle',
+      abortController: null,
+    })
+  },
+
   clearResources: () => {
     const state = get()
     if (state.currentWorkspaceId && state.currentConversationId) {
@@ -164,6 +196,8 @@ export const useResourcesStore = create<ResourcesStore>((set, get) => ({
       topics: [],
       analysis: null,
       generationError: null,
+      generationStatus: 'idle',
+      lastGeneratedAt: null,
     })
   },
 
@@ -206,6 +240,7 @@ export const resourcesActions = {
     bubbles: ConversationBubble[],
     userRequest?: string
   ) => useResourcesStore.getState().addMoreResources(workspaceId, conversationId, title, bubbles, userRequest),
+  cancelGeneration: () => useResourcesStore.getState().cancelGeneration(),
   clearResources: () => useResourcesStore.getState().clearResources(),
   checkProviderStatus: () => useResourcesStore.getState().checkProviderStatus(),
 }

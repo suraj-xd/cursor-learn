@@ -9,6 +9,7 @@ import type {
   GenerateExercisesRequest,
   EvaluateInteractiveRequest,
   InteractiveExercise,
+  ConversationBubble,
 } from "@/types/learnings"
 import {
   generateExercises,
@@ -30,7 +31,7 @@ type LearningsStore = LearningsState & {
     conversationTitle: string,
     provider: ProviderId,
     modelId: string,
-    opts?: { workspaceId?: string; conversationId?: string },
+    opts?: { workspaceId?: string; conversationId?: string; bubbles?: ConversationBubble[] },
     type?: ExerciseType
   ) => Promise<void>
   addMoreExercises: (
@@ -38,10 +39,10 @@ type LearningsStore = LearningsState & {
     conversationTitle: string,
     provider: ProviderId,
     modelId: string,
-    opts: { workspaceId?: string; conversationId?: string } | undefined,
+    opts: { workspaceId?: string; conversationId?: string; bubbles?: ConversationBubble[] } | undefined,
     type: ExerciseType,
     count?: number,
-    userRequest?: string
+    userRequest?: string,
   ) => Promise<void>
   evaluateInteractive: (
     exercise: InteractiveExercise,
@@ -59,10 +60,11 @@ type LearningsStore = LearningsState & {
   revealHint: (exerciseId: string) => void
   markForReview: (exerciseId: string, delayMinutes?: number) => void
   getDueForReview: () => InteractiveExercise[]
+  cancelGeneration: () => void
 }
 
 const DEFAULT_COUNTS = {
-  interactive: 6,
+  interactive: 5,
   mcq: 2,
   tf: 2,
 }
@@ -97,6 +99,8 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
   generationError: null,
   evaluationError: null,
   activeTab: "interactive",
+  generationJobId: null,
+  generationStatus: "idle",
   currentWorkspaceId: null,
   currentConversationId: null,
 
@@ -145,7 +149,14 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
     const state = get()
     if (state.isGenerating) return
 
-    set({ isGenerating: true, generationError: null })
+    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+    set({
+      isGenerating: true,
+      generationError: null,
+      generationJobId: jobId,
+      generationStatus: "loading",
+    })
 
     const existingHashes = state.exercises.map((ex) => hashExercisePrompt(ex.prompt))
     
@@ -155,6 +166,7 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
 
     const request: GenerateExercisesRequest = {
       chatContext,
+      bubbles: opts?.bubbles,
       conversationTitle,
       existingPromptHashes: existingHashes,
       desiredCounts,
@@ -162,6 +174,9 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
 
     try {
       const response = await generateExercises(request, provider, modelId, opts)
+      if (get().generationJobId !== jobId) {
+        return
+      }
       
       const newExercises = response.exercises.filter((newEx) => {
         const newHash = hashExercisePrompt(newEx.prompt)
@@ -179,6 +194,8 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
         exercises: updatedExercises,
         contextSummaryId: response.contextSummaryId,
         isGenerating: false,
+        generationJobId: null,
+        generationStatus: "success",
         currentWorkspaceId: opts?.workspaceId ?? null,
         currentConversationId: opts?.conversationId ?? null,
       })
@@ -193,7 +210,9 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
     } catch (error) {
       set({
         isGenerating: false,
+        generationJobId: null,
         generationError: error instanceof Error ? error.message : "Failed to generate exercises",
+        generationStatus: "error",
       })
     }
   },
@@ -214,6 +233,7 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
 
     const request: GenerateExercisesRequest = {
       chatContext,
+      bubbles: opts?.bubbles,
       conversationTitle,
       existingPromptHashes: existingHashes,
       desiredCounts,
@@ -468,6 +488,24 @@ export const useLearningsStore = create<LearningsStore>((set, get) => ({
         ex.reviewAt <= now
     )
   },
+
+  cancelGeneration: () => {
+    const state = get()
+    set({
+      isGenerating: false,
+      generationJobId: null,
+      generationStatus: "idle",
+      generationError: null,
+    })
+
+    saveToCache(
+      state.currentWorkspaceId,
+      state.currentConversationId,
+      state.exercises,
+      state.attempts,
+      "cached"
+    )
+  },
 }))
 
 export const learningsActions = {
@@ -482,4 +520,5 @@ export const learningsActions = {
   clearExercises: useLearningsStore.getState().clearExercises,
   revealHint: useLearningsStore.getState().revealHint,
   markForReview: useLearningsStore.getState().markForReview,
+  cancelGeneration: useLearningsStore.getState().cancelGeneration,
 }

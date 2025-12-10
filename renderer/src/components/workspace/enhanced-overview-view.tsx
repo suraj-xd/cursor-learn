@@ -30,9 +30,12 @@ type Props = {
 function MermaidBlock({ code }: { code: string }) {
   const [svg, setSvg] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const [showRaw, setShowRaw] = useState(false)
 
   useEffect(() => {
     let active = true
+    setError(null)
+    setSvg('')
     ;(async () => {
       try {
         const mermaid = (await import('mermaid')).default
@@ -40,8 +43,8 @@ function MermaidBlock({ code }: { code: string }) {
         const id = `mermaid-${Math.random().toString(36).slice(2)}`
         const { svg: renderedSvg } = await mermaid.render(id, code)
         if (active) setSvg(renderedSvg)
-      } catch {
-        if (active) setError('Diagram render failed')
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Diagram render failed')
       }
     })()
     return () => {
@@ -51,8 +54,17 @@ function MermaidBlock({ code }: { code: string }) {
 
   if (error) {
     return (
-      <div className="my-4 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-        {error}
+      <div className="my-4 rounded-lg border border-border bg-muted/30 p-3 text-sm space-y-2">
+        <div className="text-destructive font-medium">Mermaid render failed</div>
+        <div className="text-xs text-muted-foreground break-words">{error}</div>
+        <Button variant="outline" size="sm" onClick={() => setShowRaw((v) => !v)}>
+          {showRaw ? 'Hide code' : 'Show code'}
+        </Button>
+        {showRaw && (
+          <pre className="text-xs bg-background border border-border rounded-md p-2 overflow-x-auto whitespace-pre">
+            {code}
+          </pre>
+        )}
       </div>
     )
   }
@@ -75,6 +87,13 @@ function MermaidBlock({ code }: { code: string }) {
 
 function SectionCard({ section }: { section: OverviewSection }) {
   const Highlighter = SyntaxHighlighter as unknown as ComponentType<any>
+  const uniqueDiagrams =
+    section.diagrams?.filter((d, idx, arr) => {
+      const first = arr.findIndex(
+        (x) => x.mermaidCode.trim() === d.mermaidCode.trim() && x.type === d.type
+      )
+      return first === idx
+    }) ?? []
 
   return (
     <div className="bg-card shadow-sm space-y-3">
@@ -114,9 +133,9 @@ function SectionCard({ section }: { section: OverviewSection }) {
         {section.content}
       </ReactMarkdown>
 
-      {section.diagrams?.length ? (
+      {uniqueDiagrams.length ? (
         <div className="space-y-3">
-          {section.diagrams.map((d) => (
+          {uniqueDiagrams.map((d) => (
             <MermaidBlock key={d.id} code={d.mermaidCode} />
           ))}
         </div>
@@ -126,6 +145,7 @@ function SectionCard({ section }: { section: OverviewSection }) {
 }
 
 export function EnhancedOverviewView({ workspaceId, conversationId, conversationTitle, bubbles }: Props) {
+  const load = useOverviewStore((s) => s.load)
   const generate = useOverviewStore((s) => s.generate)
   const entry = useOverviewStore((s) => s.items[conversationId])
   const overview = entry?.overview ?? null
@@ -137,6 +157,12 @@ export function EnhancedOverviewView({ workspaceId, conversationId, conversation
   const observerRef = useRef<IntersectionObserver | null>(null)
 
   const sections = overview?.sections ?? []
+
+  useEffect(() => {
+    if (!overview && status === 'idle') {
+      void load({ workspaceId, conversationId })
+    }
+  }, [conversationId, load, overview, status, workspaceId])
 
   useEffect(() => {
     if (!sections.length) return

@@ -3,14 +3,14 @@ export type ResourceType = 'documentation' | 'video' | 'article' | 'tool' | 'git
 export type ResourceSource = 'ai' | 'tavily' | 'perplexity'
 
 export type ResourceCategory = 
-  | 'fundamentals'
-  | 'documentation'
-  | 'tutorials'
-  | 'videos'
-  | 'deep_dives'
-  | 'tools'
+  | 'core'
+  | 'deep_dive'
+  | 'practical'
+  | 'reference'
 
 export type ResourcesProviderId = 'auto' | 'perplexity' | 'tavily' | 'google' | 'openai' | 'anthropic'
+
+export type ResourceQuality = 'essential' | 'recommended' | 'supplementary'
 
 export type Resource = {
   id: string
@@ -19,12 +19,15 @@ export type Resource = {
   title: string
   url: string
   description: string
-  relevanceReason?: string
+  whyUseful: string
+  quality: ResourceQuality
+  relevanceScore: number
   thumbnail?: string
   source: ResourceSource
   embedUrl?: string
   favicon?: string
   domain?: string
+  author?: string
   createdAt: number
 }
 
@@ -54,46 +57,46 @@ export type GenerateResourcesResponse = {
   message?: string
 }
 
+export type GenerationStatus = 'idle' | 'analyzing' | 'generating' | 'complete' | 'error'
+
 export type ResourcesState = {
   resources: Resource[]
   topics: string[]
   analysis: ConversationAnalysis | null
   isGenerating: boolean
+  generationStatus: GenerationStatus
   generationError: string | null
   hasTavilyKey: boolean
   hasPerplexityKey: boolean
   availableProviders: string[]
+  lastGeneratedAt: number | null
 }
 
 export const CATEGORY_INFO: Record<ResourceCategory, { label: string; description: string; iconName: string }> = {
-  fundamentals: {
-    label: 'Fundamentals',
-    description: 'Theory and mental models behind your code',
-    iconName: 'brain',
+  core: {
+    label: 'Start Here',
+    description: 'Essential resources directly related to your problem',
+    iconName: 'target',
   },
-  documentation: {
-    label: 'Hidden Gems',
-    description: 'Advanced docs and RFCs you missed',
-    iconName: 'scroll-text',
-  },
-  tutorials: {
-    label: 'Level Up',
-    description: 'Advanced implementations and patterns',
-    iconName: 'trending-up',
-  },
-  videos: {
-    label: 'Mind-Expanding Talks',
-    description: 'Conference talks that change how you think',
-    iconName: 'presentation',
-  },
-  deep_dives: {
-    label: 'Deep Dives',
-    description: 'Performance, security, and architecture',
+  deep_dive: {
+    label: 'Go Deeper',
+    description: 'Advanced content for thorough understanding',
     iconName: 'microscope',
   },
-  tools: {
-    label: 'Power Tools',
-    description: 'Tools you didn\'t know you needed',
-    iconName: 'wrench',
+  practical: {
+    label: 'Hands-On',
+    description: 'Tutorials and examples you can follow along',
+    iconName: 'code',
   },
+  reference: {
+    label: 'Reference',
+    description: 'Official docs and API references to bookmark',
+    iconName: 'book-open',
+  },
+}
+
+export const QUALITY_INFO: Record<ResourceQuality, { label: string; color: string }> = {
+  essential: { label: 'Must Read', color: 'text-green-600' },
+  recommended: { label: 'Recommended', color: 'text-blue-600' },
+  supplementary: { label: 'Extra', color: 'text-muted-foreground' },
 }

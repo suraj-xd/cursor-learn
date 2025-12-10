@@ -21,17 +21,17 @@ function loadPrompt(filename: string): string {
   ]
 
   for (const filePath of candidates) {
-    try {
-      if (existsSync(filePath)) {
-        return readFileSync(filePath, 'utf-8').trim()
-      }
+  try {
+    if (existsSync(filePath)) {
+      return readFileSync(filePath, 'utf-8').trim()
+    }
     } catch {
       continue
     }
-  }
-
-  console.warn(`Prompt file not found: ${filename}`)
-  return ''
+    }
+    
+    console.warn(`Prompt file not found: ${filename}`)
+    return ''
 }
 
 export const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')

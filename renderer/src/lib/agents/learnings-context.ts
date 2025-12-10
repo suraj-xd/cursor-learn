@@ -1,8 +1,11 @@
-type ConversationBubble = {
+export type ConversationBubble = {
   type: 'user' | 'ai'
   text: string
   timestamp?: number
 }
+
+const parsedContextCache = new Map<string, { parsed: ParsedContext; timestamp: number }>()
+const CACHE_TTL_MS = 5 * 60 * 1000
 
 type ParsedTurn = {
   index: number
@@ -66,6 +69,17 @@ function scoreImportance(turn: ParsedTurn): void {
   turn.importance = clamped >= 8 ? 'high' : clamped >= 5 ? 'medium' : 'low'
 }
 
+function computeContextHash(bubbles: ConversationBubble[]): string {
+  const key = bubbles.map((b) => `${b.type}:${b.text.length}`).join('|')
+  let hash = 0
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  return Math.abs(hash).toString(36)
+}
+
 export function parseContext(bubbles: ConversationBubble[]): ParsedContext {
   const turns: ParsedTurn[] = bubbles.map((bubble, index) => {
     const hasCode = CODE_BLOCK_REGEX.test(bubble.text)
@@ -98,6 +112,42 @@ export function parseContext(bubbles: ConversationBubble[]): ParsedContext {
       totalTokens,
       highImportanceTurns,
     },
+  }
+}
+
+export function getCachedOrParseContext(
+  conversationId: string,
+  bubbles: ConversationBubble[]
+): ParsedContext {
+  const cacheKey = `${conversationId}:${computeContextHash(bubbles)}`
+  const cached = parsedContextCache.get(cacheKey)
+
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.parsed
+  }
+
+  const parsed = parseContext(bubbles)
+  parsedContextCache.set(cacheKey, { parsed, timestamp: Date.now() })
+
+  if (parsedContextCache.size > 20) {
+    const entries = Array.from(parsedContextCache.entries())
+    const oldest = entries.sort((a, b) => a[1].timestamp - b[1].timestamp)[0]
+    if (oldest) parsedContextCache.delete(oldest[0])
+  }
+
+  return parsed
+}
+
+export function clearContextCache(conversationId?: string): void {
+  if (conversationId) {
+    const keys = Array.from(parsedContextCache.keys())
+    for (const key of keys) {
+      if (key.startsWith(`${conversationId}:`)) {
+        parsedContextCache.delete(key)
+      }
+    }
+  } else {
+    parsedContextCache.clear()
   }
 }
 
@@ -151,9 +201,12 @@ export function truncateTurnContent(turn: ParsedTurn, maxChars: number = 2000): 
 
 export function prepareContextForGeneration(
   bubbles: ConversationBubble[],
-  tokenBudget: number = TOKEN_BUDGETS.default
+  tokenBudget: number = TOKEN_BUDGETS.default,
+  conversationId?: string
 ): { context: string; stats: ParsedContext['stats']; truncated: boolean } {
-  const parsed = parseContext(bubbles)
+  const parsed = conversationId
+    ? getCachedOrParseContext(conversationId, bubbles)
+    : parseContext(bubbles)
 
   const truncatedTurns = truncateForBudget(
     parsed.turns.map((t) => truncateTurnContent(t)),
