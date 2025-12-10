@@ -42,6 +42,14 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: yarn build:publish
 
+      - name: Upload mac artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-artifacts
+          path: |
+            dist/Cursor Learn.dmg
+            dist/Cursor Learn.zip
+
   build-windows:
     timeout-minutes: 30
     runs-on: windows-latest
@@ -70,6 +78,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: yarn build:publish
 
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            dist/Cursor Learn.exe
+
   create-release:
     needs: [build-mac, build-windows]
     runs-on: ubuntu-latest
@@ -77,6 +92,12 @@ jobs:
       contents: write
 
     steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -89,5 +110,7 @@ jobs:
             
             - **macOS**: https://cursor-learn-releases.s3.amazonaws.com/Cursor%20Learn.dmg
             - **Windows**: https://cursor-learn-releases.s3.amazonaws.com/Cursor%20Learn.exe
+          files: |
+            release-assets/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
