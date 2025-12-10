@@ -242,8 +242,8 @@ export async function generateWithSchema<T>(
     }
     
     const result = options.messages
-      ? await generateObject({ ...baseParams, messages: options.messages })
-      : await generateObject({ ...baseParams, prompt: options.prompt ?? '' })
+      ? await (generateObject as Function)({ ...baseParams, messages: options.messages })
+      : await (generateObject as Function)({ ...baseParams, prompt: options.prompt ?? '' })
     
     const usage: TokenUsage = {
       inputTokens: result.usage?.inputTokens ?? 0,
