@@ -17,3 +17,10 @@ certificate.p12
 *.p12
 package-mac-signed.sh
 .env
+
+# OS files
+.DS_Store
+*.DS_Store
+
+# TypeScript build info
+*.tsbuildinfo

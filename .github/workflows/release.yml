@@ -81,6 +81,7 @@ jobs:
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Create lightweight tag for publish
+        shell: bash
         run: |
           if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
             echo "Tag v${{ github.event.inputs.version }} already exists"
