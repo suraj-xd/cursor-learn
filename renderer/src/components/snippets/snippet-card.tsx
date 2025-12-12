@@ -60,12 +60,10 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
           {snippet.isPinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
-          <Badge variant="secondary" className="font-mono text-[10px] py-0 shrink-0">
-            <LanguageIcon language={snippet.language} className="size-3" />
-          </Badge>
+          <LanguageIcon language={snippet.language} className="size-4 shrink-0" />
           <span className="text-sm font-medium truncate">{title}</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 opacity-50">
           <Button
             variant="ghost"
             size="sm"
@@ -74,9 +72,9 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
             title="Copy"
           >
             {copied ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
+              <Check className="h-3 w-3 text-green-500" />
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="h-3 w-3" />
             )}
           </Button>
           <Button
@@ -86,7 +84,7 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
             onClick={onEdit}
             title="Edit"
           >
-            <Edit2 className="h-3.5 w-3.5" />
+            <Edit2 className="h-3 w-3" />
           </Button>
           <Button
             variant="ghost"
@@ -95,7 +93,7 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
             onClick={onPin}
             title={snippet.isPinned ? "Unpin" : "Pin"}
           >
-            <Pin className="h-3.5 w-3.5" />
+            <Pin className="h-3 w-3" />
           </Button>
           <Button
             variant="ghost"
@@ -104,7 +102,7 @@ export function SnippetCard({ snippet, codeStyle, onPin, onDelete, onEdit }: Sni
             onClick={() => setShowDeleteConfirm(true)}
             title="Delete"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-3 w-3" />
           </Button>
         </div>
       </div>

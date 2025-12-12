@@ -1,15 +1,20 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo, type ComponentType } from "react"
+import { useState, useEffect } from "react"
 import { X, Save } from "lucide-react"
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
+import CodeMirror from "@uiw/react-codemirror"
+import { javascript } from "@codemirror/lang-javascript"
+import { python } from "@codemirror/lang-python"
+import { json } from "@codemirror/lang-json"
+import { css } from "@codemirror/lang-css"
+import { markdown } from "@codemirror/lang-markdown"
+import { yaml } from "@codemirror/lang-yaml"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NoteLabels } from "@/components/notes/note-labels"
 import { useSnippetsStore } from "@/store/snippets"
-import { useSettingsStore } from "@/store/settings"
-import { getCodeThemeStyle } from "@/lib/code-themes"
+import { useTheme } from "@/components/theme-provider"
 import type { Snippet } from "@/types/snippets"
 
 interface CodeEditorProps {
@@ -19,75 +24,58 @@ interface CodeEditorProps {
   placeholder?: string
 }
 
-function CodeEditor({ value, onChange, language, placeholder }: CodeEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const highlightRef = useRef<HTMLDivElement>(null)
-  const { codeTheme } = useSettingsStore()
-  const codeStyle = useMemo(() => getCodeThemeStyle(codeTheme), [codeTheme])
-  const Highlighter = SyntaxHighlighter as unknown as ComponentType<{
-    style: Record<string, React.CSSProperties>
-    language: string
-    PreTag: string
-    customStyle: React.CSSProperties
-    wrapLongLines: boolean
-    children: string
-  }>
+function CodeEditor({ value, onChange, language }: CodeEditorProps) {
+  const { resolvedColorMode } = useTheme()
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Tab") {
-      e.preventDefault()
-      const textarea = textareaRef.current
-      if (!textarea) return
-      
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const newValue = value.substring(0, start) + "  " + value.substring(end)
-      onChange(newValue)
-      
-      requestAnimationFrame(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + 2
-      })
-    }
-  }
-
-  const handleScroll = () => {
-    if (textareaRef.current && highlightRef.current) {
-      highlightRef.current.scrollTop = textareaRef.current.scrollTop
-      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft
+  const getLanguageExtension = (lang: string) => {
+    const langKey = lang.toLowerCase()
+    switch (langKey) {
+      case "javascript":
+      case "js":
+        return javascript()
+      case "typescript":
+      case "ts":
+        return javascript({ typescript: true })
+      case "jsx":
+        return javascript({ jsx: true })
+      case "tsx":
+        return javascript({ jsx: true, typescript: true })
+      case "python":
+      case "py":
+        return python()
+      case "json":
+        return json()
+      case "css":
+        return css()
+      case "markdown":
+      case "md":
+        return markdown()
+      case "yaml":
+      case "yml":
+        return yaml()
+      default:
+        return javascript()
     }
   }
 
   return (
-    <div className="relative h-full min-h-[300px] rounded-md border bg-muted/30">
-      <div 
-        ref={highlightRef}
-        className="absolute inset-0 overflow-hidden pointer-events-none text-xs"
-      >
-        <Highlighter
-          style={codeStyle}
-          language={language || "javascript"}
-          PreTag="div"
-          customStyle={{
-            margin: 0,
-            padding: "0.75rem",
-            minHeight: "100%",
-            background: "transparent",
-            fontSize: "0.75rem",
-          }}
-          wrapLongLines={false}
-        >
-          {value || " "}
-        </Highlighter>
-      </div>
-      <textarea
-        ref={textareaRef}
+    <div className="h-full min-h-[300px] rounded-md border overflow-hidden [&_.cm-scroller]:overflow-auto">
+      <CodeMirror
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onScroll={handleScroll}
-        className="absolute inset-0 w-full h-full p-3 font-mono text-xs bg-transparent text-transparent caret-foreground resize-none focus:outline-none overflow-auto"
-        spellCheck={false}
-        placeholder={placeholder}
+        onChange={onChange}
+        extensions={[getLanguageExtension(language)]}
+        theme={resolvedColorMode}
+        basicSetup={{
+          lineNumbers: true,
+          highlightActiveLineGutter: true,
+          highlightActiveLine: true,
+          foldGutter: false,
+        }}
+        className="text-xs h-full [&_.cm-editor]:!outline-none [&_.cm-focused]:ring-2 [&_.cm-focused]:ring-primary/50 [&_.cm-editor]:h-full [&_.cm-scroller]:h-full"
+        style={{
+          fontSize: "0.75rem",
+          height: "100%",
+        }}
       />
     </div>
   )
@@ -101,7 +89,7 @@ interface NewSnippetEditorProps {
 }
 
 export function NewSnippetEditor({ onClose, onSaveAndOpen, initialCode = "", initialLanguage = "javascript" }: NewSnippetEditorProps) {
-  const { createSnippet, labels: allLabels, fetchLabels, setSelectedSnippetId } = useSnippetsStore()
+  const { createSnippet, labels: allLabels, fetchLabels } = useSnippetsStore()
   const [title, setTitle] = useState("")
   const [language, setLanguage] = useState(initialLanguage)
   const [code, setCode] = useState(initialCode)

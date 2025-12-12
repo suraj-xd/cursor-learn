@@ -164,11 +164,11 @@ export function TodoEditor({ className }: TodoEditorProps) {
     <div className={cn("flex flex-1 h-full overflow-y-auto scrollbar-hidden", className)}>
       <div className="w-40 shrink-0 pr-6 text-right">
         <div className="sticky top-0.5 pt-12">
-          <div className="text-[#534E4C] text-sm">
+          <div className="text-sm text-muted-foreground font-departure uppercase tracking-wider">
             {format(displayDate, "MMM d, yyyy")}
           </div>
           {isTodayDate && (
-            <div className="text-[#767676] text-xs mt-0.5">Today</div>
+            <div className="text-xs mt-0.5 text-foreground font-departure uppercase tracking-wider">Today</div>
           )}
         </div>
       </div>

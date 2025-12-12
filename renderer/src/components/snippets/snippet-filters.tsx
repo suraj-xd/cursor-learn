@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { LanguageIcon } from "@/lib/language-icons"
 import type { LanguageCount } from "@/types/snippets"
 
 interface SnippetFiltersProps {
@@ -42,9 +43,10 @@ export function SnippetFilters({
         <Badge
           key={language}
           variant={selectedLanguage === language ? "default" : "outline"}
-          className="cursor-pointer text-xs py-0.5 gap-1"
+          className="cursor-pointer text-xs py-0.5 gap-1.5 items-center"
           onClick={() => onSelect(language === selectedLanguage ? null : language)}
         >
+          <LanguageIcon language={language} className="size-3" />
           {language}
           <span className="opacity-60">({count})</span>
         </Badge>

@@ -265,9 +265,12 @@ export const WorkspaceList = memo(function WorkspaceList() {
             className="pl-8 h-9"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            Indexed only ({indexedCount})
+        <div className="flex items-center gap-2  border border-border rounded-md px-2 py-1">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            Indexed
+            <span className="text-xs text-muted-foreground font-departure uppercase tracking-wider">
+            ({indexedCount})
+            </span>
           </span>
           <Switch
             checked={indexedOnly}
