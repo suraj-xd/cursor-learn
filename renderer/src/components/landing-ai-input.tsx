@@ -149,6 +149,7 @@ export const LandingAIInput = memo(function LandingAIInput() {
             lastUpdatedAt: Date.now(),
             createdAt: Date.now(),
             messageCount: t.bubbles.length,
+            hasEnhancedOverview: false,
           })),
         }));
       } catch {

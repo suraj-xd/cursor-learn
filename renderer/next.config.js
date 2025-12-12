@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Using middleware; disable static export
+  output: 'export',
   distDir: process.env.NODE_ENV === 'production' ? '../app' : '.next',
   reactStrictMode: false,
 }
