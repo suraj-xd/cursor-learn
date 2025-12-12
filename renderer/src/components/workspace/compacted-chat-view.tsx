@@ -166,8 +166,8 @@ function DebugPanel({
 function EmptyState({ onStart, isStarting }: { onStart: () => void; isStarting: boolean }) {
   if (isStarting) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <AILoader variant="compact" />
+      <div className="h-full flex items-center justify-center min-h-[400px]">
+        <AILoader variant="compact" mode="loading" />
       </div>
     )
   }
@@ -466,8 +466,8 @@ export const CompactedChatView = memo(function CompactedChatView({
 
   if (viewState === 'loading') {
     return (
-      <div className="h-full flex items-center justify-center">
-        <AILoader variant="compact" />
+      <div className="h-full flex items-center justify-center min-h-[400px]">
+        <AILoader variant="compact" mode="loading" />
       </div>
     )
   }

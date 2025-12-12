@@ -17,43 +17,6 @@ const THINKING_WORDS = [
   "Generating",
 ];
 
-function Spinner({ className }: { className?: string }) {
-  const [rotation, setRotation] = React.useState(0);
-
-  React.useEffect(() => {
-    let frame: number;
-    let lastTime = performance.now();
-    let speed = 8;
-    let targetSpeed = 8;
-    let nextSpeedChange = performance.now() + Math.random() * 800 + 200;
-
-    const animate = (currentTime: number) => {
-      const delta = currentTime - lastTime;
-      lastTime = currentTime;
-
-      if (currentTime > nextSpeedChange) {
-        targetSpeed = Math.random() * 15 + 3;
-        nextSpeedChange = currentTime + Math.random() * 600 + 200;
-      }
-
-      speed += (targetSpeed - speed) * 0.05;
-      setRotation((prev) => (prev + speed * (delta / 16)) % 360);
-      frame = requestAnimationFrame(animate);
-    };
-
-    frame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  return (
-    <span
-      className={cn("inline-block text-primary", className)}
-      style={{ transform: `rotate(${rotation}deg)` }}
-    >
-      ⁕
-    </span>
-  );
-}
 
 interface AILoaderProps {
   description?: string;
@@ -61,10 +24,12 @@ interface AILoaderProps {
   onRetry?: () => void;
   className?: string;
   variant?: "default" | "compact" | "inline";
+  mode?: "thinking" | "loading";
 }
 
 function BitProgressBar() {
   const [bars, setBars] = React.useState<boolean[]>(Array(12).fill(false));
+  const barIds = React.useMemo(() => Array.from({ length: 12 }, (_, i) => `bar-${i}`), []);
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -104,7 +69,7 @@ function BitProgressBar() {
       [
       {bars.map((filled, i) => (
         <span
-          key={i}
+          key={barIds[i]}
           className={filled ? "text-foreground" : "text-muted-foreground/30"}
         >
           {filled ? "█" : "░"}
@@ -115,17 +80,17 @@ function BitProgressBar() {
   );
 }
 
-function ThinkingText({ error }: { error?: string | null }) {
+function ThinkingText({ error, mode = "thinking" }: { error?: string | null; mode?: "thinking" | "loading" }) {
   const [wordIndex, setWordIndex] = React.useState(0);
   const [dots, setDots] = React.useState("");
 
   React.useEffect(() => {
-    if (error) return;
+    if (error || mode === "loading") return;
     const interval = setInterval(() => {
       setWordIndex((prev) => (prev + 1) % THINKING_WORDS.length);
     }, 2000);
     return () => clearInterval(interval);
-  }, [error]);
+  }, [error, mode]);
 
   React.useEffect(() => {
     if (error) return;
@@ -135,13 +100,14 @@ function ThinkingText({ error }: { error?: string | null }) {
     return () => clearInterval(interval);
   }, [error]);
 
-  const text = error ? "Error" : THINKING_WORDS[wordIndex];
+  const text = error ? "Error" : mode === "loading" ? "Loading" : THINKING_WORDS[wordIndex];
+  const displayText = mode === "loading" ? `${text}${dots}` : text;
 
   return (
     <span className="inline-flex items-center gap-2">
       {/* {!error && <Spinner className="text-base" />} */}
       <motion.span
-        key={text}
+        key={displayText}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className={cn(
@@ -149,7 +115,7 @@ function ThinkingText({ error }: { error?: string | null }) {
           error ? "text-destructive" : "text-foreground"
         )}
       >
-        {text}
+        {displayText}
       </motion.span>
     </span>
   );
@@ -161,6 +127,7 @@ export function AILoader({
   onRetry,
   className,
   variant = "default",
+  mode = "thinking",
 }: AILoaderProps) {
   if (variant === "inline") {
     return (
@@ -170,7 +137,7 @@ export function AILoader({
           className
         )}
       >
-        <ThinkingText error={error} />
+        <ThinkingText error={error} mode={mode} />
         {error && onRetry && (
           <button
             type="button"
@@ -188,7 +155,7 @@ export function AILoader({
     return (
       <div className={cn("flex flex-col items-center gap-3 p-4", className)}>
         <div className="">
-          <ThinkingText error={error} />
+          <ThinkingText error={error} mode={mode} />
         </div>
         <BitProgressBar />
         {error && onRetry && (
@@ -213,7 +180,7 @@ export function AILoader({
       )}
     >
       <div className="">
-        <ThinkingText error={error} />
+        <ThinkingText error={error} mode={mode} />
       </div>
 
       <BitProgressBar />

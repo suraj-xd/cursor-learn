@@ -56,6 +56,7 @@ import { TextSelectionToolbar } from "@/components/text-selection-toolbar";
 import { AttachedSelection } from "@/components/attached-selections";
 import { CopyResponseButton } from "@/components/copy-response-button";
 import { useSelectionStore, selectionActions } from "@/store/selection";
+import { AILoader } from "@/components/ui/ai-loader";
 
 type MentionedConversation = {
   id: string;
@@ -1033,8 +1034,8 @@ export function AgentsWorkspace() {
           )}
 
           {isLoadingMessages && (
-            <div className="flex flex-1 items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="flex flex-1 items-center justify-center min-h-[400px]">
+              <AILoader mode="loading" />
             </div>
           )}
 

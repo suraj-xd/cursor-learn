@@ -11,7 +11,14 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { FolderX, FolderOpen, ChevronDown, ChevronUp, Search, Sparkles } from "lucide-react";
+import {
+  FolderX,
+  FolderOpen,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { TextIcon, FileTextIcon, ClockIcon } from "@radix-ui/react-icons";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -19,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ConversationPreview } from "@/services/workspace";
 import { cn } from "@/lib/utils";
 import { useWorkspaceListStore } from "@/store/workspace";
+import CursorCubeIcon from "./brand-icons/Cursor-cube-icon";
 
 const MAX_VISIBLE_ROWS = 10;
 
@@ -60,8 +68,10 @@ const ConversationRow = memo(function ConversationRow({
       </span>
       <span className="flex items-center justify-end">
         {conversation.hasEnhancedOverview && (
-          <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0.5">
-            <Sparkles className="w-2.5 h-2.5" />
+          <Badge
+            variant="secondary"
+            className="text-[10px] gap-1 px-2 py-0.5 font-light border border-border rounded-md"
+          > 
             Indexed
           </Badge>
         )}
@@ -107,7 +117,7 @@ const WorkspaceCard = memo(function WorkspaceCard({
   if (project.conversations.length === 0) return null;
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-card">
+    <div className="border border-border overflow-hidden bg-card">
       <Link
         href={`/workspace?id=${project.id}`}
         className="flex items-center gap-2.5 px-3 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors border-b border-border"
@@ -235,7 +245,8 @@ export const WorkspaceList = memo(function WorkspaceList() {
 
   const indexedCount = useMemo(() => {
     return projects.reduce(
-      (acc, p) => acc + p.conversations.filter((c) => c.hasEnhancedOverview).length,
+      (acc, p) =>
+        acc + p.conversations.filter((c) => c.hasEnhancedOverview).length,
       0
     );
   }, [projects]);
@@ -253,29 +264,38 @@ export const WorkspaceList = memo(function WorkspaceList() {
   }
 
   return (
-    <div className="space-y-3 pt-4 min-h-[calc(100vh-150px)]">
-      <div className="flex items-center justify-between gap-4 px-1">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search conversations..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 h-9"
-          />
-        </div>
-        <div className="flex items-center gap-2  border border-border rounded-md px-2 py-1">
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
-            Indexed
-            <span className="text-xs text-muted-foreground font-departure uppercase tracking-wider">
-            ({indexedCount})
-            </span>
+    <div className="pt-4 min-h-[calc(100vh-150px)]">
+      <div className="flex items-center gap-4 px-1 flex-col w-full border border-border rounded-lg p-2 rounded-b-none border-b-none">
+        <p className="text-sm text-muted-foreground pt-2.5 flex items-center gap-2 w-full justify-start px-2">
+          {/* Browse your Cursor chat conversations by project.  */}
+          These are your local
+          <span className="flex items-center gap-2 font-departure">
+            <CursorCubeIcon />
+            Cursor IDE
           </span>
-          <Switch
-            checked={indexedOnly}
-            onCheckedChange={setIndexedOnly}
-          />
+          conversations. open to view thier breakdown, coding challenges, and
+          programming resources and more.
+        </p>
+        <div className="flex items-center gap-2 w-full justify-between px-2">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-9 border border-border rounded-md"
+            />
+          </div>
+          <div className="flex items-center gap-2  border border-border rounded-md px-2 py-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              Indexed
+              <span className="text-xs text-muted-foreground font-departure uppercase tracking-wider">
+                ({indexedCount})
+              </span>
+            </span>
+            <Switch checked={indexedOnly} onCheckedChange={setIndexedOnly} />
+          </div>
         </div>
       </div>
 

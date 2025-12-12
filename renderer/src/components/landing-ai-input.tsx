@@ -403,7 +403,7 @@ export const LandingAIInput = memo(function LandingAIInput() {
           )}
 
           <textarea
-            placeholder="Ask cursor learn breakdown your vibecoding, "
+            placeholder="Ask cursor learn to breakdown your vibecoding, "
             className="w-full min-h-[50px] max-h-[200px] resize-none bg-transparent text-sm font-light placeholder:text-muted-foreground/60 focus:outline-none text-foreground"
             value={input}
             onChange={(e) => setInput(e.target.value)}

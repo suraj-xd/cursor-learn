@@ -21,12 +21,11 @@ import {
   MoreVertical,
   RefreshCw,
   Settings,
-  Target,
-  FileText,
   Key,
 } from 'lucide-react'
 import { AILoader } from '@/components/ui/ai-loader'
 import { LanguageIcon } from '@/lib/language-icons'
+import { CopyResponseButton } from '@/components/copy-response-button'
 import { overviewIpc, type ConversationOverview, type OverviewSession, type OverviewProgress } from '@/lib/agents/overview-ipc'
 import { useSettingsStore } from '@/store/settings'
 import Link from 'next/link'
@@ -85,8 +84,8 @@ function NoApiKeyState() {
 function EmptyState({ onStart, isStarting }: { onStart: () => void; isStarting: boolean }) {
   if (isStarting) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <AILoader variant="compact" />
+      <div className="h-full flex items-center justify-center min-h-[400px]">
+        <AILoader variant="compact" mode="loading" />
       </div>
     )
   }
@@ -155,9 +154,12 @@ function MermaidDiagram({ code }: { code: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [svg, setSvg] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const idRef = useRef<string>('')
 
   useEffect(() => {
     let mounted = true
+    const id = `mermaid-${Math.random().toString(36).slice(2)}`
+    idRef.current = id
 
     const renderDiagram = async () => {
       try {
@@ -166,20 +168,19 @@ function MermaidDiagram({ code }: { code: string }) {
           startOnLoad: false,
           theme: 'dark',
           securityLevel: 'loose',
+          suppressErrorRendering: true,
           fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
         })
 
-        const id = `mermaid-${Math.random().toString(36).slice(2)}`
         const { svg: renderedSvg } = await mermaid.render(id, code)
         
         if (mounted) {
           setSvg(renderedSvg)
           setError(null)
         }
-      } catch (err) {
+      } catch {
         if (mounted) {
           setError('Failed to render diagram')
-          console.error('Mermaid error:', err)
         }
       }
     }
@@ -188,14 +189,28 @@ function MermaidDiagram({ code }: { code: string }) {
 
     return () => {
       mounted = false
+      const el = document.getElementById(id)
+      if (el) el.remove()
+      const errorEl = document.querySelector(`#d${id}`)
+      if (errorEl) errorEl.remove()
     }
   }, [code])
 
+  useEffect(() => {
+    const cleanup = () => {
+      const strayErrors = Array.from(document.querySelectorAll('[id^="dmermaid-"]'))
+      const straySvgs = Array.from(document.querySelectorAll('[id^="mermaid-"][id$="-svg"]'))
+        .filter(el => !el.closest('[data-mermaid-container]'))
+      strayErrors.concat(straySvgs).forEach(el => { el.remove() })
+    }
+    cleanup()
+    return cleanup
+  }, [])
+
   if (error) {
     return (
-      <div className="my-4 p-4 rounded-lg border border-border bg-muted/30">
-        <p className="text-sm text-muted-foreground">{error}</p>
-        <pre className="mt-2 text-xs overflow-x-auto">{code}</pre>
+      <div className="my-4 p-2 text-xs text-muted-foreground">
+        can't render the diagram
       </div>
     )
   }
@@ -211,6 +226,7 @@ function MermaidDiagram({ code }: { code: string }) {
   return (
     <div
       ref={containerRef}
+      data-mermaid-container
       className="my-4 p-4 rounded-lg border border-border bg-muted/20 overflow-x-auto"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG from mermaid library is safe
       dangerouslySetInnerHTML={{ __html: svg }}
@@ -223,11 +239,12 @@ function TopicBadges({ topics }: { topics: string[] }) {
 
   return (
     <div className="flex flex-wrap gap-2">
+      <span className="text-xs font-medium text-muted-foreground mr-1 self-center">Topics:</span>
       {topics.map((topic) => (
         <Badge
           key={topic}
           variant="secondary"
-          className="px-3 py-1 border border-border text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-default"
+          className="px-3 py-1.5 border border-border/60 text-xs font-medium bg-primary/8 text-primary/90 hover:bg-primary/15 transition-all duration-200 cursor-default shadow-sm"
         >
           {topic}
         </Badge>
@@ -247,7 +264,7 @@ function MarkdownContent({ content }: { content: string }) {
   }>
 
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-li:text-foreground/90">
+    <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-xl prose-h1:border-b prose-h1:border-border prose-h1:pb-2 prose-h2:text-lg prose-h3:text-base prose-p:text-foreground/85 prose-p:leading-relaxed prose-li:text-foreground/85 prose-strong:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-blockquote:border-l-primary/30 prose-blockquote:bg-primary/5 prose-blockquote:not-italic prose-blockquote:text-foreground/70 prose-code:before:content-none prose-code:after:content-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -264,20 +281,27 @@ function MarkdownContent({ content }: { content: string }) {
 
             return isInline ? (
               <code
-                className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono text-xs"
+                className="px-1.5 py-0.5 rounded bg-muted/80 text-foreground font-mono text-[0.85em] border border-border/40"
                 {...props}
               >
                 {children}
               </code>
             ) : (
-              <div className="my-4 rounded-lg overflow-hidden border border-border">
-                {match && (
-                  <div className="bg-muted/80 px-3 py-1.5 border-b border-border">
-                    <span className="text-xs font-mono text-muted-foreground">
-                      <LanguageIcon language={match[1]} className="size-3.5" />
+              <div className="my-4 rounded-lg overflow-hidden border border-border w-fit max-w-full group">
+                <div className="bg-muted/80 px-3 py-1.5 border-b border-border flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <LanguageIcon language={language || 'text'} className="size-3.5" />
+                    <span className="text-xs font-mono text-muted-foreground capitalize">
+                      {language || 'text'}
                     </span>
                   </div>
-                )}
+                  <CopyResponseButton
+                    content={codeString}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  />
+                </div>
                 <Highlighter
                   style={vscDarkPlus}
                   language={language || 'text'}
@@ -288,6 +312,8 @@ function MarkdownContent({ content }: { content: string }) {
                     background: 'hsl(var(--muted) / 0.5)',
                     fontSize: '0.8rem',
                     lineHeight: '1.5',
+                    width: 'fit-content',
+                    maxWidth: '100%',
                   }}
                   codeTagProps={{
                     style: {
@@ -303,50 +329,6 @@ function MarkdownContent({ content }: { content: string }) {
           pre({ children }) {
             return <>{children}</>
           },
-          h1({ children }) {
-            return <h1 className="text-xl font-bold mt-8 mb-4 text-foreground border-b border-border pb-2">{children}</h1>
-          },
-          h2({ children }) {
-            return <h2 className="text-lg font-semibold mt-6 mb-3 text-foreground">{children}</h2>
-          },
-          h3({ children }) {
-            return <h3 className="text-base font-medium mt-5 mb-2 text-foreground">{children}</h3>
-          },
-          ul({ children }) {
-            return <ul className="list-disc pl-5 space-y-1 my-3">{children}</ul>
-          },
-          ol({ children }) {
-            return <ol className="list-decimal pl-5 space-y-1 my-3">{children}</ol>
-          },
-          li({ children }) {
-            return <li className="text-foreground/90">{children}</li>
-          },
-          p({ children }) {
-            return <p className="my-3 text-foreground/90 leading-relaxed">{children}</p>
-          },
-          blockquote({ children }) {
-            return (
-              <blockquote className="border-l-4 border-primary/50 pl-4 my-4 italic text-muted-foreground">
-                {children}
-              </blockquote>
-            )
-          },
-          table({ children }) {
-            return (
-              <div className="my-4 overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">{children}</table>
-              </div>
-            )
-          },
-          thead({ children }) {
-            return <thead className="bg-muted/50 border-b border-border">{children}</thead>
-          },
-          th({ children }) {
-            return <th className="px-4 py-2 text-left font-medium text-foreground">{children}</th>
-          },
-          td({ children }) {
-            return <td className="px-4 py-2 border-t border-border/50">{children}</td>
-          },
         }}
       >
         {content}
@@ -358,14 +340,20 @@ function MarkdownContent({ content }: { content: string }) {
 function OverviewContent({ overview }: { overview: ConversationOverview }) {
   return (
     <ScrollArea className="h-full">
-      <div className="p-6 space-y-6">
-        <div className="space-y-4">
-          <h1 className="text-2xl font-bold tracking-tight">{overview.title}</h1>
-          <p className="text-muted-foreground leading-relaxed text-sm">{overview.summary}</p>
-          {overview.topics.length > 0 && <TopicBadges topics={overview.topics} />}
+      <div className="p-6 space-y-8">
+        <div className="space-y-5">
+          <div className="space-y-3">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground leading-tight">{overview.title}</h1>
+            <p className="text-muted-foreground leading-relaxed text-sm font-medium">{overview.summary}</p>
+          </div>
+          {overview.topics.length > 0 && (
+            <div className="pt-2">
+              <TopicBadges topics={overview.topics} />
+            </div>
+          )}
         </div>
 
-        <div className="border-t border-border pt-6">
+        <div className="border-t border-border/60 pt-8">
           <MarkdownContent content={overview.content} />
         </div>
       </div>
@@ -518,8 +506,8 @@ export const OverviewView = memo(function OverviewView({
 
   if (viewState === 'loading') {
     return (
-      <div className="h-full flex items-center justify-center">
-        <AILoader variant="compact" />
+      <div className="h-full flex items-center justify-center min-h-[400px]">
+        <AILoader variant="compact" mode="loading" />
       </div>
     )
   }

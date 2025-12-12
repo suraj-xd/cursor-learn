@@ -71,8 +71,8 @@ function MermaidBlock({ code }: { code: string }) {
 
   if (!svg) {
     return (
-      <div className="my-4 flex items-center justify-center rounded-lg border border-border bg-muted/30 p-4">
-        <AILoader variant="compact" />
+      <div className="my-4 flex items-center justify-center rounded-lg border border-border bg-muted/30 p-4 min-h-[400px]">
+        <AILoader variant="compact" mode="loading" />
       </div>
     )
   }

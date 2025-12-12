@@ -50,6 +50,7 @@ import { TextSelectionToolbar } from "@/components/text-selection-toolbar"
 import { AttachedSelection } from "@/components/attached-selections"
 import { CopyResponseButton } from "@/components/copy-response-button"
 import { useSelectionStore, selectionActions } from "@/store/selection"
+import { AILoader } from "@/components/ui/ai-loader"
 
 interface AssistantSidebarProps {
   open: boolean
@@ -678,22 +679,19 @@ export function AssistantSidebar({
             </div>
           </div>
         ) : sidebarState === "compacting" ? (
-          <div className="flex-1 flex items-center justify-center p-4">
+          <div className="flex-1 flex items-center justify-center p-4 min-h-[400px]">
             <div className="text-center space-y-4">
-              <div className="relative mx-auto w-12 h-12">
-                <Wand2 className="h-8 w-8 mx-auto text-primary animate-pulse" />
-                <Sparkles className="h-4 w-4 absolute -top-1 -right-1 text-primary/70 animate-bounce" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Preparing smart context...</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {compactProgress?.currentStep === "mapping"
+              <AILoader
+                variant="compact"
+                mode="thinking"
+                description={
+                  compactProgress?.currentStep === "mapping"
                     ? `Processing chunk ${compactProgress.chunksProcessed}/${compactProgress.chunksTotal}`
                     : compactProgress?.currentStep === "reducing"
                     ? "Combining insights..."
-                    : "Analyzing conversation..."}
-                </p>
-              </div>
+                    : "Analyzing conversation..."
+                }
+              />
               {compactProgress && (
                 <div className="w-32 mx-auto h-1 bg-muted rounded-full overflow-hidden">
                   <div
@@ -737,8 +735,7 @@ export function AssistantSidebar({
         ) : visibleMessages.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center p-6">
-              <Sparkles className="h-8 w-8 mx-auto mb-3 text-primary/50" />
-              <h3 className="text-sm font-medium mb-1">Ready to help</h3>
+              <h3 className="text-sm font-medium mb-1 font-departure uppercase">Ready to help</h3>
               <p className="text-xs text-muted-foreground max-w-[280px]">
                 Ask me anything about this conversation.
               </p>

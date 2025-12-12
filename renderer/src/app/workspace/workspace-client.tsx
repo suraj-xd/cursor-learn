@@ -34,8 +34,8 @@ type ContentTab = 'overview' | 'learnings' | 'resources' | 'compacted' | 'raw'
 
 const ChatViewSkeleton = memo(function ChatViewSkeleton() {
   return (
-    <div className="h-full flex items-center justify-center">
-      <AILoader variant="compact" />
+    <div className="h-full flex items-center justify-center min-h-[400px]">
+      <AILoader variant="compact" mode="loading" />
     </div>
   )
 })
@@ -220,8 +220,8 @@ function WorkspaceClientInner() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <AILoader />
+      <div className="h-full flex items-center justify-center min-h-[400px]">
+        <AILoader mode="loading" />
       </div>
     )
   }

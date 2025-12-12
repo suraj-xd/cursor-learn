@@ -321,22 +321,35 @@ export function LearningsView({
               </Button>
             </div>
           ) : filteredExercises.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-              <h3 className="text-sm font-departure uppercase text-muted-foreground">Learnings</h3>
-              <p className="text-xs text-muted-foreground/70 max-w-[200px]">
-                Practice exercises from your conversation
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 font-departure"
-                onClick={handleOpenAddDialog}
-                disabled={isGenerating}
-              >
-                <Plus className="h-3 w-3" />
-                Generate
-              </Button>
-            </div>
+            <>
+              {generationError && (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <p className="text-center text-xs max-w-[500px] text-wrap">{generationError?.length > 100 ? `${generationError.slice(0, 100)}...` : generationError}</p>
+                  </div>
+                  <Button size="sm" onClick={handleRegenerate} variant="outline">
+                    Try again
+                  </Button>
+                </div>
+              )}
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                <h3 className="text-sm font-departure uppercase text-muted-foreground">Learnings</h3>
+                <p className="text-xs text-muted-foreground/70 max-w-[200px]">
+                  Practice exercises from your conversation
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 font-departure"
+                  onClick={handleOpenAddDialog}
+                  disabled={isGenerating}
+                >
+                  <Plus className="h-3 w-3" />
+                  Generate
+                </Button>
+              </div>
+            </>
           ) : (
             <>
               {filteredExercises.map((exercise) => (
