@@ -85,7 +85,7 @@ export function TodoEditor({ className }: TodoEditorProps) {
     content: "",
     editorProps: {
       attributes: {
-        class: "focus:outline-none min-h-[400px] text-[#e8e8e8] text-base leading-relaxed",
+        class: "focus:outline-none min-h-[400px] text-foreground text-base leading-relaxed",
       },
     },
     onUpdate: ({ editor: ed }) => {

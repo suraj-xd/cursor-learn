@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="docs/screenshot.png" alt="Cursor Learn" width="800" />
+  <img src="docs/screenshot-1.png" alt="Cursor Learn" width="800" />
 </p>
+
 
 # Cursor Learn
 
@@ -22,10 +23,10 @@ Built with Nextron (Next.js + Electron), SQLite, and the Vercel AI SDK.
 
 ---
 
-<p align="center">
-  <img src="docs/screenshot-1.png" alt="Cursor Learn" width="800" />
-</p>
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Cursor Learn" width="800" />
+</p>
 ## Getting Started
 
 ### Prerequisites

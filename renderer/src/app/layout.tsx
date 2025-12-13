@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { ProgressBarProvider } from "@/components/progress-bar-provider";
+import { OnboardingRoot } from "@/components/onboarding/onboarding-root";
 const grotesk = localFont({
   src: [
     {
@@ -94,7 +95,10 @@ export default function RootLayout({
           <TooltipProvider>
             <Navbar />
             <ProgressBarProvider />
-            <main className="flex-1 bg-background">{children}</main>
+            <main className="flex-1 bg-background">
+              {children}
+              <OnboardingRoot />
+            </main>
             {/* <Footer /> */}
             <Toaster />
           </TooltipProvider>

@@ -20,13 +20,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ApiKeyDialog } from "@/components/comman/api-key-dialog";
 import { agentsIpc } from "@/lib/agents/ipc";
-import { compactIpc, type CompactedChat, type CompactProgress, type SuggestedQuestion } from "@/lib/agents/compact-ipc";
+import { compactIpc, type CompactProgress, type SuggestedQuestion } from "@/lib/agents/compact-ipc";
 import { APP_CONFIG } from "@/lib/config";
 import type {
   AgentApiKeyMetadata,
   AgentChat,
   AgentChatBundle,
-  AgentChatContext,
   AgentMessage,
 } from "@/types/agents";
 import type { ProviderId } from "@/lib/ai/config";
@@ -57,6 +56,10 @@ import { AttachedSelection } from "@/components/attached-selections";
 import { CopyResponseButton } from "@/components/copy-response-button";
 import { useSelectionStore, selectionActions } from "@/store/selection";
 import { AILoader } from "@/components/ui/ai-loader";
+import { useAgentContext, useAgentChatMode, type AgentChatMode } from "@/hooks/use-agent-context";
+import { OverviewView } from "@/components/workspace/overview-view";
+import { LearningsView } from "@/components/workspace/learnings-view";
+import { ResourcesView } from "@/components/workspace/resources-view";
 
 type MentionedConversation = {
   id: string;
@@ -90,8 +93,6 @@ const defaultComposerState: ComposerState = {
   mentionedConversations: [],
 };
 
-const MAX_CONTEXT_TOKENS = 4000;
-
 type DebugLog = {
   id: string;
   level: "info" | "error";
@@ -115,27 +116,25 @@ export function AgentsWorkspace() {
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const [assistantBusy, setAssistantBusy] = useState(false);
-  const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
+  const [, setDebugLogs] = useState<DebugLog[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   const [isLoadingMention, setIsLoadingMention] = useState(false);
   const [workspaceLogs, setWorkspaceLogs] = useState<WorkspaceLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
-  const [contextPreview, setContextPreview] = useState<AgentChatContext | null>(
-    null
-  );
-  const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [availableProviders, setAvailableProviders] = useState<ProviderId[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>("google");
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
-  const [mentionCompactProgress, setMentionCompactProgress] = useState<Record<string, CompactProgress | null>>({});
+  const [, setMentionCompactProgress] = useState<Record<string, CompactProgress | null>>({});
   const [usageRefreshTrigger, setUsageRefreshTrigger] = useState(0);
   const [suggestedQuestions, setSuggestedQuestions] = useState<SuggestedQuestion[]>([]);
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false);
   const lastContextRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { context: preparedContext, status: contextStatus, error: contextError, stale: contextStale, refresh: refreshContext } = useAgentContext(selectedChatId);
+  const [mode, setMode] = useAgentChatMode(selectedChatId, "agent");
 
   const pushDebug = useCallback((level: DebugLog["level"], message: string) => {
     setDebugLogs((prev) => {
@@ -158,7 +157,7 @@ export function AgentsWorkspace() {
         const logs = await ipc.workspace.logs();
         setWorkspaceLogs(logs || []);
       }
-    } catch (err) {
+    } catch (_err) {
       pushDebug("error", "Failed to load workspace conversations");
     } finally {
       setIsLoadingLogs(false);
@@ -197,15 +196,6 @@ export function AgentsWorkspace() {
     return apiKeys.some((key) => PROVIDER_PRIORITY.includes(key.provider as ProviderId));
   }, [apiKeys]);
 
-  const preferredProvider = useMemo((): ProviderId | null => {
-    for (const provider of PROVIDER_PRIORITY) {
-      if (apiKeys.some((key) => key.provider === provider)) {
-        return provider;
-      }
-    }
-    return null;
-  }, [apiKeys]);
-
   const ensureApiKey = useCallback(
     (provider: ProviderId) => {
       const hasKey = apiKeys.some((key) => key.provider === provider);
@@ -240,43 +230,16 @@ export function AgentsWorkspace() {
   }, [pushDebug, selectedChatId]);
 
   useEffect(() => {
-    if (!selectedChatId) {
-      setContextPreview(null);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingContext(true);
-
-    agentsIpc.chats
-      .prepareContext(selectedChatId)
-      .then((ctx) => {
-        if (!cancelled) {
-          setContextPreview(ctx);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : "Unable to prepare context";
-          pushDebug("error", message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingContext(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedChatId, pushDebug]);
-
-  useEffect(() => {
     loadApiKeys();
     fetchChats();
   }, [fetchChats, loadApiKeys]);
+
+  useEffect(() => {
+    if (contextError && contextStatus === "error") {
+      pushDebug("error", contextError);
+      toast.error(contextError);
+    }
+  }, [contextError, contextStatus, pushDebug]);
 
   useEffect(() => {
     if (selectedChatId !== undefined) {
@@ -293,40 +256,6 @@ export function AgentsWorkspace() {
       setSelectedChatId(chatFromUrl);
     }
   }, [searchParams, selectedChatId]);
-
-  useEffect(() => {
-    if (!selectedChatId) {
-      setContextPreview(null);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingContext(true);
-
-    agentsIpc.chats
-      .prepareContext(selectedChatId)
-      .then((ctx) => {
-        if (!cancelled) {
-          setContextPreview(ctx);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : "Unable to prepare context";
-          pushDebug("error", message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingContext(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedChatId, pushDebug]);
 
   const filteredChats = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -434,15 +363,32 @@ export function AgentsWorkspace() {
     return parts.length > 1 ? parts[1] : parts[0];
   }, [bundle?.chat?.modelId, bundle?.chat?.provider]);
 
-  const fullModelId = useMemo(
-    () => `${selectedProvider}:${selectedModel}`,
-    [selectedProvider, selectedModel]
-  );
-
   const anyMentionCompacting = useMemo(
     () => composer.mentionedConversations.some((m) => m.compactingStatus === "compacting"),
     [composer.mentionedConversations]
   );
+
+  const modeOptions: { id: AgentChatMode; label: string }[] = [
+    { id: "agent", label: "Agent" },
+    { id: "overview", label: "Overview" },
+    { id: "interactive", label: "Interactive" },
+    { id: "resources", label: "Resources" },
+  ];
+
+  const conversationBubbles = useMemo(
+    () =>
+      (bundle?.messages ?? [])
+        .filter((m) => m.role !== "system")
+        .map((m) => ({
+          type: m.role === "user" ? ("user" as const) : ("ai" as const),
+          text: m.content,
+          timestamp: m.createdAt,
+        })),
+    [bundle?.messages]
+  );
+
+  const workspaceIdForMode = bundle?.chat.workspaceConversationId || "agents";
+  const conversationIdForMode = bundle?.chat.id || selectedChatId || "pending";
 
   const loadSuggestions = useCallback(async (context: string) => {
     if (!context) return;
@@ -783,6 +729,10 @@ export function AgentsWorkspace() {
       return;
     }
 
+    if (contextStatus === "idle" || contextStatus === "error") {
+      refreshContext();
+    }
+
     setSuggestedQuestions([]);
     setComposer((prev) => ({ ...prev, isSending: true }));
     setAssistantError(null);
@@ -947,9 +897,10 @@ export function AgentsWorkspace() {
             {filteredChats.map((chat) => {
               const isActive = chat.id === selectedChatId;
               return (
-                <div
+                <button
                   key={chat.id}
-                  className={`group flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors cursor-pointer ${
+                  type="button"
+                  className={`group flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors text-left ${
                     isActive ? "bg-muted" : "hover:bg-muted/50"
                   }`}
                   onClick={() => setSelectedChatId(chat.id)}
@@ -968,7 +919,7 @@ export function AgentsWorkspace() {
                     chatTitle={chat.title}
                     onDelete={handleDeleteChat}
                   />
-                </div>
+                </button>
               );
             })}
           </div>
@@ -995,6 +946,19 @@ export function AgentsWorkspace() {
                 }}
               />
             )}
+            <div className="hidden md:flex items-center gap-1">
+              {modeOptions.map((opt) => (
+                <Button
+                  key={opt.id}
+                  size="sm"
+                  variant={mode === opt.id ? "default" : "outline"}
+                  className="h-8 px-2 text-xs"
+                  onClick={() => setMode(opt.id)}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -1041,152 +1005,200 @@ export function AgentsWorkspace() {
 
           {bundle && (
             <>
-              <TextSelectionToolbar source="agent-chat" className="flex-1 flex flex-col overflow-hidden min-h-0">
-                <MessagesView
-                  messages={bundle.messages}
-                  isLoading={assistantBusy}
-                  streamingContent={streamingContent}
-                  suggestedQuestions={suggestedQuestions}
-                  onSelectSuggestion={handleSelectSuggestion}
-                  onRefreshSuggestions={refreshSuggestions}
-                  isRefreshingSuggestions={isRefreshingSuggestions}
-                />
-              </TextSelectionToolbar>
+              {mode === "agent" ? (
+                <>
+                  <TextSelectionToolbar source="agent-chat" className="flex-1 flex flex-col overflow-hidden min-h-0">
+                    <MessagesView
+                      messages={bundle.messages}
+                      isLoading={assistantBusy}
+                      streamingContent={streamingContent}
+                      suggestedQuestions={suggestedQuestions}
+                      onSelectSuggestion={handleSelectSuggestion}
+                      onRefreshSuggestions={refreshSuggestions}
+                      isRefreshingSuggestions={isRefreshingSuggestions}
+                    />
+                  </TextSelectionToolbar>
 
-              <div className="border-t border-border/40 p-3">
-                {assistantError && (
-                  <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    <span className="truncate">{assistantError}</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() =>
-                        selectedChatId &&
-                        requestAssistantCompletion(selectedChatId)
-                      }
-                      disabled={assistantBusy}
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                )}
-
-                <AttachedSelection className="mb-2" />
-
-                {composer.mentionedConversations.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {composer.mentionedConversations.map((m) => (
-                      <Badge
-                        key={m.id}
-                        variant="secondary"
-                        className={`gap-1 pr-1 text-xs ${
-                          m.compactingStatus === "compacting" ? "animate-pulse" : ""
-                        }`}
-                      >
-                        {m.compactingStatus === "compacting" ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <AtSign className="h-3 w-3" />
-                        )}
-                        <span className="max-w-24 truncate">{m.title}</span>
-                        {m.wasCompacted && (
-                          <span className="text-[10px] text-emerald-500">✓</span>
-                        )}
-                        {m.compactingStatus === "failed" && (
-                          <span className="text-[10px] text-destructive">!</span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMention(m.id)}
-                          className="ml-0.5 rounded-full p-0.5 hover:bg-muted"
-                          disabled={m.compactingStatus === "compacting"}
+                  <div className="border-t border-border/40 p-3">
+                    {assistantError && (
+                      <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        <span className="truncate">{assistantError}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() =>
+                            selectedChatId &&
+                            requestAssistantCompletion(selectedChatId)
+                          }
+                          disabled={assistantBusy}
                         >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                <div className="relative flex gap-2">
-                  <div className="relative flex-1">
-                    <MentionPopover
-                      isOpen={mentionOpen}
-                      onClose={() => {
-                        setMentionOpen(false);
-                        setMentionQuery("");
-                      }}
-                      conversations={workspaceLogs}
-                      isLoading={isLoadingLogs}
-                      filterQuery={mentionQuery}
-                      onSelect={handleMentionSelect}
-                      position={mentionPosition}
-                    />
-                    <textarea
-                      ref={textareaRef}
-                      className="min-h-[80px] w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder={anyMentionCompacting ? "Compacting context..." : "Ask a question… (@ to reference)"}
-                      value={composer.value}
-                      onChange={handleTextareaChange}
-                      onKeyDown={handleKeyDown}
-                      disabled={
-                        composer.isSending || assistantBusy || isLoadingMention || anyMentionCompacting
-                      }
-                    />
-                    {isLoadingMention && (
-                      <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/80">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          Retry
+                        </Button>
                       </div>
                     )}
-                  </div>
-                  <Button
-                    size="icon"
-                    onClick={() => handleSendMessage()}
-                    disabled={
-                      composer.isSending ||
-                      !composer.value.trim() ||
-                      assistantBusy ||
-                      isLoadingMention ||
-                      anyMentionCompacting
-                    }
-                    className="h-[80px] w-10 shrink-0"
-                  >
-                    {composer.isSending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
 
-                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <div className="flex items-center gap-3">
-                    {anyMentionCompacting ? (
-                      <span className="flex items-center gap-1.5 text-primary">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Compacting context…
-                      </span>
-                    ) : assistantBusy ? (
-                      <span className="flex items-center gap-1.5">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Thinking…
-                      </span>
-                    ) : (
-                      <span>⇧↵ newline</span>
+                    <AttachedSelection className="mb-2" />
+
+                    {composer.mentionedConversations.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {composer.mentionedConversations.map((m) => (
+                          <Badge
+                            key={m.id}
+                            variant="secondary"
+                            className={`gap-1 pr-1 text-xs ${
+                              m.compactingStatus === "compacting" ? "animate-pulse" : ""
+                            }`}
+                          >
+                            {m.compactingStatus === "compacting" ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <AtSign className="h-3 w-3" />
+                            )}
+                            <span className="max-w-24 truncate">{m.title}</span>
+                            {m.wasCompacted && (
+                              <span className="text-[10px] text-emerald-500">✓</span>
+                            )}
+                            {m.compactingStatus === "failed" && (
+                              <span className="text-[10px] text-destructive">!</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMention(m.id)}
+                              className="ml-0.5 rounded-full p-0.5 hover:bg-muted"
+                              disabled={m.compactingStatus === "compacting"}
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
                     )}
-                    <UsageIndicator refreshTrigger={usageRefreshTrigger} />
+
+                    <div className="relative flex gap-2">
+                      <div className="relative flex-1">
+                        <MentionPopover
+                          isOpen={mentionOpen}
+                          onClose={() => {
+                            setMentionOpen(false);
+                            setMentionQuery("");
+                          }}
+                          conversations={workspaceLogs}
+                          isLoading={isLoadingLogs}
+                          filterQuery={mentionQuery}
+                          onSelect={handleMentionSelect}
+                          position={mentionPosition}
+                        />
+                        <textarea
+                          ref={textareaRef}
+                          className="min-h-[80px] w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder={anyMentionCompacting ? "Compacting context..." : "Ask a question… (@ to reference)"}
+                          value={composer.value}
+                          onChange={handleTextareaChange}
+                          onKeyDown={handleKeyDown}
+                          disabled={
+                            composer.isSending || assistantBusy || isLoadingMention || anyMentionCompacting
+                          }
+                        />
+                        {isLoadingMention && (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/80">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="icon"
+                        onClick={() => handleSendMessage()}
+                        disabled={
+                          composer.isSending ||
+                          !composer.value.trim() ||
+                          assistantBusy ||
+                          isLoadingMention ||
+                          anyMentionCompacting
+                        }
+                        className="h-[80px] w-10 shrink-0"
+                      >
+                        {composer.isSending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-3">
+                        {anyMentionCompacting ? (
+                          <span className="flex items-center gap-1.5 text-primary">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Compacting context…
+                          </span>
+                        ) : assistantBusy ? (
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Thinking…
+                          </span>
+                        ) : (
+                          <span>⇧↵ newline</span>
+                        )}
+                        <UsageIndicator refreshTrigger={usageRefreshTrigger} />
+                        {contextStatus === "preparing" && (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Preparing context
+                          </span>
+                        )}
+                        {contextStatus === "error" && (
+                          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => refreshContext()}>
+                            Retry context
+                          </Button>
+                        )}
+                        {contextStale && (
+                          <span className="text-amber-600">Using cached context</span>
+                        )}
+                      </div>
+                      {preparedContext && bundle?.chat.modelId && (
+                        <CompactContext
+                          usedTokens={preparedContext.tokenEstimate}
+                          maxTokens={getMaxTokens(bundle.chat.modelId)}
+                          modelId={bundle.chat.modelId}
+                          messageCount={preparedContext.totalMessages}
+                        />
+                      )}
+                      {!preparedContext && contextStatus === "preparing" && (
+                        <span>warming context…</span>
+                      )}
+                    </div>
                   </div>
-                  {contextPreview && bundle?.chat.modelId && (
-                    <CompactContext
-                      usedTokens={contextPreview.tokenEstimate}
-                      maxTokens={getMaxTokens(bundle.chat.modelId)}
-                      modelId={bundle.chat.modelId}
-                      messageCount={contextPreview.totalMessages}
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {mode === "overview" && (
+                    <OverviewView
+                      workspaceId={workspaceIdForMode}
+                      conversationId={conversationIdForMode}
+                      conversationTitle={bundle.chat.title}
+                      bubbles={conversationBubbles}
+                    />
+                  )}
+                  {mode === "interactive" && (
+                    <LearningsView
+                      workspaceId={workspaceIdForMode}
+                      conversationId={conversationIdForMode}
+                      conversationTitle={bundle.chat.title}
+                      bubbles={conversationBubbles}
+                    />
+                  )}
+                  {mode === "resources" && (
+                    <ResourcesView
+                      workspaceId={workspaceIdForMode}
+                      conversationId={conversationIdForMode}
+                      conversationTitle={bundle.chat.title}
+                      bubbles={conversationBubbles}
                     />
                   )}
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -1238,16 +1250,16 @@ function MessagesView({
   const wasAtBottomRef = useRef(true);
 
   useEffect(() => {
-    if (isLoading && !streamingContent) {
+    if (isLoading) {
       wasAtBottomRef.current = isAtBottom;
     }
-  }, [isLoading, streamingContent, isAtBottom]);
+  }, [isLoading, isAtBottom]);
 
   useEffect(() => {
     if (isLoading && wasAtBottomRef.current) {
       scrollToBottom();
     }
-  }, [isLoading, streamingContent, scrollToBottom]);
+  }, [isLoading, scrollToBottom]);
 
   return (
     <div className="relative flex-1 overflow-hidden">
@@ -1384,6 +1396,7 @@ function MessageBubble({ message }: { message: AgentMessage }) {
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                     strokeWidth={2}
+                    aria-hidden="true"
                   >
                     <path
                       strokeLinecap="round"
