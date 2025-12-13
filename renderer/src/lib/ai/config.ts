@@ -102,11 +102,18 @@ export const PROVIDERS: ProviderConfig[] = [
 
 const GOOGLE_MODELS: ModelOption[] = [
   {
+    id: 'gemini-3-pro',
+    label: 'Gemini 3 Pro',
+    description: 'Latest flagship model with advanced capabilities.',
+    maxTokens: 1048576,
+    isNew: true,
+    capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
+  },
+  {
     id: 'gemini-2.5-pro',
     label: 'Gemini 2.5 Pro',
     description: 'Superior reasoning with hybrid thinking capabilities.',
     maxTokens: 1048576,
-    isNew: true,
     capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
   },
   {
@@ -114,7 +121,6 @@ const GOOGLE_MODELS: ModelOption[] = [
     label: 'Gemini 2.5 Flash',
     description: 'Best in price-performance with thinking capabilities.',
     maxTokens: 1048576,
-    isNew: true,
     capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
   },
   {
@@ -122,7 +128,6 @@ const GOOGLE_MODELS: ModelOption[] = [
     label: 'Gemini 2.5 Flash Lite',
     description: 'Fastest and most cost-efficient 2.5 model.',
     maxTokens: 1048576,
-    isNew: true,
     capabilities: ['vision', 'streaming'],
   },
   {
@@ -140,6 +145,13 @@ const GOOGLE_MODELS: ModelOption[] = [
     capabilities: ['streaming'],
   },
   {
+    id: 'gemini-1.5-flash-002',
+    label: 'Gemini 1.5 Flash',
+    description: 'Fast and efficient with 1M token context.',
+    maxTokens: 1048576,
+    capabilities: ['vision', 'streaming', 'function_calling'],
+  },
+  {
     id: 'gemini-1.5-pro',
     label: 'Gemini 1.5 Pro',
     description: 'High quality responses with 1M token context.',
@@ -150,7 +162,23 @@ const GOOGLE_MODELS: ModelOption[] = [
 
 const OPENAI_MODELS: ModelOption[] = [
   {
-    id: 'gpt-4o',
+    id: 'gpt-5.2',
+    label: 'GPT-5.2',
+    description: 'Latest flagship model with advanced capabilities.',
+    maxTokens: 128000,
+    isNew: true,
+    capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
+  },
+  {
+    id: 'gpt-5.1',
+    label: 'GPT-5.1',
+    description: 'Next-generation model with enhanced reasoning.',
+    maxTokens: 128000,
+    isNew: true,
+    capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
+  },
+  {
+    id: 'gpt-4o-2024-11-20',
     label: 'GPT-4o',
     description: 'Flagship multimodal model with vision and reasoning.',
     maxTokens: 128000,
@@ -168,7 +196,6 @@ const OPENAI_MODELS: ModelOption[] = [
     label: 'GPT-4.1',
     description: 'Improved coding and long-context comprehension.',
     maxTokens: 1047576,
-    isNew: true,
     capabilities: ['streaming', 'function_calling'],
   },
   {
@@ -176,7 +203,6 @@ const OPENAI_MODELS: ModelOption[] = [
     label: 'GPT-4.1 Mini',
     description: 'Fast and efficient version of GPT-4.1.',
     maxTokens: 1047576,
-    isNew: true,
     capabilities: ['streaming', 'function_calling'],
   },
   {
@@ -184,7 +210,6 @@ const OPENAI_MODELS: ModelOption[] = [
     label: 'o3',
     description: 'Most advanced reasoning model with extended thinking.',
     maxTokens: 200000,
-    isNew: true,
     capabilities: ['reasoning', 'vision'],
   },
   {
@@ -192,7 +217,6 @@ const OPENAI_MODELS: ModelOption[] = [
     label: 'o3 Mini',
     description: 'Cost-efficient reasoning for coding and math.',
     maxTokens: 200000,
-    isNew: true,
     capabilities: ['reasoning'],
   },
   {
@@ -200,7 +224,6 @@ const OPENAI_MODELS: ModelOption[] = [
     label: 'o4 Mini',
     description: 'Fast reasoning for math, coding, and visual tasks.',
     maxTokens: 200000,
-    isNew: true,
     capabilities: ['reasoning', 'vision'],
   },
   {
@@ -214,19 +237,41 @@ const OPENAI_MODELS: ModelOption[] = [
 
 const ANTHROPIC_MODELS: ModelOption[] = [
   {
-    id: 'claude-sonnet-4-20250514',
-    label: 'Claude Sonnet 4',
-    description: 'State-of-the-art coding and reasoning.',
+    id: 'claude-sonnet-4-5-20250929',
+    label: 'Claude Sonnet 4.5',
+    description: 'Latest Sonnet with enhanced reasoning and coding.',
     maxTokens: 200000,
     isNew: true,
     capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
   },
   {
-    id: 'claude-opus-4-20250514',
-    label: 'Claude Opus 4',
+    id: 'claude-haiku-4-5-20251001',
+    label: 'Claude Haiku 4.5',
+    description: 'Fast and efficient model for quick tasks.',
+    maxTokens: 200000,
+    isNew: true,
+    capabilities: ['vision', 'streaming', 'function_calling'],
+  },
+  {
+    id: 'claude-opus-4-1',
+    label: 'Claude Opus 4.1',
     description: 'World\'s best coding model for complex tasks.',
     maxTokens: 200000,
     isNew: true,
+    capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
+  },
+  {
+    id: 'claude-sonnet-4-20250514',
+    label: 'Claude Sonnet 4',
+    description: 'State-of-the-art coding and reasoning.',
+    maxTokens: 200000,
+    capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
+  },
+  {
+    id: 'claude-opus-4-20250514',
+    label: 'Claude Opus 4',
+    description: 'Advanced model for complex tasks.',
+    maxTokens: 200000,
     capabilities: ['vision', 'reasoning', 'streaming', 'function_calling'],
   },
   {
@@ -318,9 +363,9 @@ export const PROVIDER_MODELS: Record<ProviderId, ModelOption[]> = {
 export const PROVIDER_PRIORITY: ProviderId[] = ['google', 'anthropic', 'openai', 'openrouter']
 
 export const PREFERRED_MODELS: Record<ProviderId, string[]> = {
-  google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-  openai: ['gpt-4o', 'o4-mini', 'gpt-4.1'],
-  anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'],
+  google: ['gemini-3-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+  openai: ['gpt-5.2', 'gpt-4o-2024-11-20', 'o3'],
+  anthropic: ['claude-sonnet-4-5-20250929', 'claude-opus-4-1', 'claude-haiku-4-5-20251001'],
   openrouter: ['openrouter/auto'],
 }
 
@@ -334,20 +379,20 @@ export const DEFAULT_MODELS: Record<ProviderId, Record<ModelRole, string>> = {
     resources: 'gemini-2.0-flash',
   },
   openai: {
-    chat: 'gpt-4o',
+    chat: 'gpt-4o-2024-11-20',
     title: 'gpt-4o-mini',
     compact: 'gpt-4o-mini',
     summarization: 'gpt-4o-mini',
-    overview: 'gpt-4o',
-    resources: 'gpt-4o',
+    overview: 'gpt-4o-2024-11-20',
+    resources: 'gpt-4o-2024-11-20',
   },
   anthropic: {
-    chat: 'claude-sonnet-4-20250514',
-    title: 'claude-3-5-haiku-20241022',
-    compact: 'claude-3-5-haiku-20241022',
-    summarization: 'claude-3-5-haiku-20241022',
-    overview: 'claude-3-5-sonnet-20241022',
-    resources: 'claude-3-5-sonnet-20241022',
+    chat: 'claude-sonnet-4-5-20250929',
+    title: 'claude-haiku-4-5-20251001',
+    compact: 'claude-haiku-4-5-20251001',
+    summarization: 'claude-haiku-4-5-20251001',
+    overview: 'claude-sonnet-4-5-20250929',
+    resources: 'claude-sonnet-4-5-20250929',
   },
   openrouter: {
     chat: 'openrouter/auto',

@@ -10,11 +10,9 @@ import {
   FolderOpen,
   Loader2,
   MessageSquare,
-  Paperclip,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -27,12 +25,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useWorkspaceListStore } from "@/store/workspace";
-import {
-  workspaceService,
-  type ConversationPreview,
-} from "@/services/workspace";
+import { workspaceService, type ConversationPreview } from "@/services/workspace";
 import { agentsIpc } from "@/lib/agents/ipc";
-import { compactIpc } from "@/lib/agents/compact-ipc";
 import type { ProviderId } from "@/lib/ai/config";
 import { PROVIDER_PRIORITY } from "@/lib/ai/config";
 import { toast } from "@/components/ui/toaster";
@@ -41,45 +35,16 @@ import {
   AssistantModelPicker,
   getInitialModel,
 } from "@/components/workspace/assistant-model-picker";
+import { useChatContext } from "@/hooks/use-chat-context";
+import { pendingChatActions } from "@/store/pending-chat";
 import { AgentModeSelector, type AgentMode } from "@/components/agent-mode-selector";
-import { APP_CONFIG } from "@/lib/config";
-import { ChatBubbleIcon, FilePlusIcon } from "@radix-ui/react-icons";
-
-type AttachedChat = {
-  id: string;
-  workspaceId: string;
-  title: string;
-  type: "chat" | "composer";
-  status: "pending" | "compacting" | "ready" | "failed";
-  content?: string;
-};
-
-const AnthropicLogo = memo(function AnthropicLogo({
-  className,
-}: {
-  className?: string;
-}) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 46 32"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="Anthropic"
-      role="img"
-    >
-      <path d="M32.73 0H26.39L38.85 32H45.2L32.73 0Z" />
-      <path d="M13.61 0L0 32H6.62L9.29 25.61H22.58L25.26 32H32.73L19.12 0H13.61ZM11.21 20.08L15.94 8.54H16.01L20.74 20.08H11.21Z" />
-    </svg>
-  );
-});
+import { FilePlusIcon } from "@radix-ui/react-icons";
 
 export const LandingAIInput = memo(function LandingAIInput() {
   const router = useRouter();
   const { projects, fetchProjects } = useWorkspaceListStore();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [attachedChats, setAttachedChats] = useState<AttachedChat[]>([]);
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
     new Set()
   );
@@ -90,7 +55,7 @@ export const LandingAIInput = memo(function LandingAIInput() {
   const [selectedProvider, setSelectedProvider] =
     useState<ProviderId>("anthropic");
   const [selectedModel, setSelectedModel] = useState<string>(
-    "claude-sonnet-4-20250514"
+    "claude-sonnet-4-5-20250929"
   );
   const [workspaceConversations, setWorkspaceConversations] = useState<
     Record<string, ConversationPreview[]>
@@ -99,6 +64,12 @@ export const LandingAIInput = memo(function LandingAIInput() {
     new Set()
   );
   const [agentMode, setAgentMode] = useState<AgentMode>("agent");
+  const {
+    attachments,
+    attachConversation,
+    removeAttachment,
+    getContextForSend,
+  } = useChatContext({ limit: 1 });
 
   useEffect(() => {
     fetchProjects();
@@ -183,108 +154,23 @@ export const LandingAIInput = memo(function LandingAIInput() {
 
   const handleAttachChat = useCallback(
     async (workspaceId: string, conversationId: string, title: string) => {
-      if (attachedChats.some((c) => c.id === conversationId)) {
-        setAttachedChats((prev) => prev.filter((c) => c.id !== conversationId));
+      const isAttached = attachments.some((c) => c.id === conversationId);
+      if (isAttached) {
+        removeAttachment(conversationId);
         return;
       }
-
-      setAttachedChats((prev) => [
-        ...prev,
-        {
-          id: conversationId,
-          workspaceId,
-          title,
-          type: "chat",
-          status: "pending",
-        },
-      ]);
       setDropdownOpen(false);
-
-      setAttachedChats((prev) =>
-        prev.map((c) =>
-          c.id === conversationId ? { ...c, status: "compacting" as const } : c
-        )
-      );
-
-      try {
-        const existingCompacted = await compactIpc.get(
-          workspaceId,
-          conversationId
-        );
-        if (existingCompacted) {
-          setAttachedChats((prev) =>
-            prev.map((c) =>
-              c.id === conversationId
-                ? {
-                    ...c,
-                    status: "ready" as const,
-                    content: existingCompacted.compactedContent,
-                  }
-                : c
-            )
-          );
-          return;
-        }
-
-        const conversation = await workspaceService.getConversation(
-          workspaceId,
-          conversationId,
-          "chat"
-        );
-        if (!conversation) throw new Error("Conversation not found");
-
-        const bubbles = conversation.messages.map((m) => ({
-          type: m.role as "user" | "ai",
-          text: m.text,
-          timestamp: m.timestamp,
-        }));
-
-        const result = await compactIpc.start({
-          workspaceId,
-          conversationId,
-          title,
-          bubbles,
-        });
-
-        setAttachedChats((prev) =>
-          prev.map((c) =>
-            c.id === conversationId
-              ? {
-                  ...c,
-                  status: "ready" as const,
-                  content: result.compactedChat.compactedContent,
-                }
-              : c
-          )
-        );
-      } catch {
-        setAttachedChats((prev) =>
-          prev.map((c) =>
-            c.id === conversationId ? { ...c, status: "failed" as const } : c
-          )
-        );
-        toast.error("Failed to prepare context");
-      }
+      await attachConversation({ workspaceId, conversationId, title, type: "chat" });
     },
-    [attachedChats]
+    [attachments, attachConversation, removeAttachment]
   );
-
-  const removeAttachment = useCallback((id: string) => {
-    setAttachedChats((prev) => prev.filter((c) => c.id !== id));
-  }, []);
 
   const handleSubmit = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed && attachedChats.length === 0) return;
+    if (!trimmed && attachments.length === 0) return;
     if (availableProviders.length === 0) {
       toast.error("Add an API key in Settings to use agents");
       router.push("/settings/llm");
-      return;
-    }
-
-    const anyCompacting = attachedChats.some((c) => c.status === "compacting");
-    if (anyCompacting) {
-      toast.info("Please wait for context to finish loading");
       return;
     }
 
@@ -297,24 +183,20 @@ export const LandingAIInput = memo(function LandingAIInput() {
         provider: selectedProvider,
       });
 
-      if (attachedChats.length > 0) {
-        const readyChats = attachedChats.filter(
-          (c) => c.status === "ready" && c.content
-        );
-        if (readyChats.length > 0) {
-          const contextContent = readyChats
-            .map(
-              (c) =>
-                `--- Referenced Conversation: "${c.title}" ---\n${c.content}\n--- End Referenced Conversation ---`
-            )
-            .join("\n\n");
+      const readyContexts = getContextForSend();
+      if (readyContexts.length > 0) {
+        const contextContent = readyContexts
+          .map(
+            (c) =>
+              `--- Referenced Conversation: "${c.title}" ---\n${c.content}\n--- End Referenced Conversation ---`
+          )
+          .join("\n\n");
 
-          await agentsIpc.messages.append({
-            chatId: newChat.id,
-            role: "system",
-            content: `The user is referencing the following conversations for context:\n\n${contextContent}`,
-          });
-        }
+        await agentsIpc.messages.append({
+          chatId: newChat.id,
+          role: "system",
+          content: `The user is referencing the following conversations for context:\n\n${contextContent}`,
+        });
       }
 
       if (trimmed) {
@@ -322,9 +204,11 @@ export const LandingAIInput = memo(function LandingAIInput() {
           chatId: newChat.id,
           role: "user",
           content: trimmed,
+          metadata: { mode: agentMode },
         });
       }
 
+      pendingChatActions.setPending(newChat.id, agentMode);
       router.push(`/agents?chat=${newChat.id}`);
     } catch {
       toast.error("Failed to create chat");
@@ -332,11 +216,13 @@ export const LandingAIInput = memo(function LandingAIInput() {
     }
   }, [
     input,
-    attachedChats,
+    attachments,
     availableProviders,
     selectedProvider,
     selectedModel,
     router,
+    getContextForSend,
+    agentMode,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -345,8 +231,6 @@ export const LandingAIInput = memo(function LandingAIInput() {
       handleSubmit();
     }
   };
-
-  const anyCompacting = attachedChats.some((c) => c.status === "compacting");
 
   return (
     <div className="w-full max-w-2xl mx-auto">
@@ -368,9 +252,9 @@ export const LandingAIInput = memo(function LandingAIInput() {
         </div> */}
 
         <div className=" px-4 pt-4">
-          {attachedChats.length > 0 && (
+          {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {attachedChats.map((chat) => (
+              {attachments.map((chat) => (
                 <div
                   key={chat.id}
                   className={cn(
@@ -449,8 +333,7 @@ export const LandingAIInput = memo(function LandingAIInput() {
             onClick={handleSubmit}
             disabled={
               isLoading ||
-              anyCompacting ||
-              (!input.trim() && attachedChats.length === 0)
+              (!input.trim() && attachments.length === 0)
             }
           >
             {isLoading ? (
@@ -518,7 +401,7 @@ export const LandingAIInput = memo(function LandingAIInput() {
                           )
                             .slice(0, 8)
                             .map((conv) => {
-                              const isAttached = attachedChats.some(
+                              const isAttached = attachments.some(
                                 (c) => c.id === conv.id
                               );
                               return (

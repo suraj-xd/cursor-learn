@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { agentsIpc } from "@/lib/agents/ipc"
-import type { AgentChatContext } from "@/types/agents"
+import type { AgentChatContext, AgentChatMode } from "@/types/agents"
 
 type ContextStatus = "idle" | "preparing" | "ready" | "error"
 
@@ -165,8 +165,6 @@ export function useAgentContext(chatId: string | null | undefined) {
     refresh: useCallback(() => warm(true), [warm]),
   }
 }
-
-export type AgentChatMode = "agent" | "overview" | "interactive" | "resources"
 
 const MODE_STORAGE_KEY = "agent-chat-mode"
 

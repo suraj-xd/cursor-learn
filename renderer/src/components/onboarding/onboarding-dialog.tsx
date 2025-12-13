@@ -2,7 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { generateFromString } from "generate-avatar"
-import { Check, Sparkles, Sun, Moon, Monitor, Wand2, ArrowLeft, ArrowRight, Loader2 } from "lucide-react"
+import {
+  Check,
+  Sun,
+  Moon,
+  Monitor,
+  Wand2,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  FolderOpen,
+  BookOpen,
+  Lightbulb,
+  Link2,
+  Bot,
+  CheckSquare,
+  StickyNote,
+  FileDown,
+  Key,
+  Palette,
+} from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -83,7 +102,7 @@ const colorModes = [
 const highlightOptions = codeThemeOptions.slice(0, 6)
 
 export function OnboardingDialog() {
-  const { isComplete, step, setStep, complete, avatarSeed, setAvatarSeed } = useOnboardingStore()
+  const { isComplete, step, setStep, complete, avatarSeed, setAvatarSeed, _hasHydrated } = useOnboardingStore()
   const [open, setOpen] = useState(false)
   const { customName, firstName, setCustomName, fetch, getDisplayName } = useUsername()
   const [nameInput, setNameInput] = useState("")
@@ -124,8 +143,8 @@ export function OnboardingDialog() {
   }, [customName, firstName])
 
   useEffect(() => {
-    if (!isComplete) setOpen(true)
-  }, [isComplete])
+    if (_hasHydrated && !isComplete) setOpen(true)
+  }, [_hasHydrated, isComplete])
 
   const seed = avatarSeed || nameInput || getDisplayName() || "intern"
 
@@ -361,6 +380,39 @@ export function OnboardingDialog() {
         </div>
       ),
     },
+    {
+      title: "Feature packed",
+      description: "Everything you need to learn from your coding sessions",
+      content: (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { icon: FolderOpen, label: "Workspace", hint: "Organize projects" },
+              { icon: BookOpen, label: "Overviews", hint: "Session insights" },
+              { icon: Lightbulb, label: "Learnings", hint: "Auto-extracted" },
+              { icon: Link2, label: "Resources", hint: "Curated links" },
+              { icon: Bot, label: "Agents", hint: "Context-aware AI" },
+              { icon: CheckSquare, label: "Todos", hint: "Task tracking" },
+              { icon: StickyNote, label: "Notes & Snippets", hint: "Save code" },
+              { icon: FileDown, label: "Export", hint: "PDF, MD, HTML" },
+              { icon: Key, label: "Multi Model", hint: "BYOK support" },
+              { icon: Palette, label: "Theming", hint: "Dark & light" },
+            ].map((feature) => (
+              <div
+                key={feature.label}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/60 bg-muted/20"
+              >
+                <feature.icon className="h-4 w-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-sm font-medium block">{feature.label}</span>
+                  {/* <span className="text-[10px] text-muted-foreground">{feature.hint}</span> */}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ),
+    },
   ]
 
   const isLast = step === steps.length - 1
@@ -416,7 +468,7 @@ export function OnboardingDialog() {
               <Button size="sm" onClick={next}>
                 {isLast ? "Get Started" : "Next"}
                 {!isLast && <ArrowRight className="h-4 w-4 ml-1" />}
-                {isLast && <Sparkles className="h-4 w-4 ml-1" />}
+                {/* {isLast && <Sparkles className="h-4 w-4 ml-1" />} */}
               </Button>
             </div>
           </div>
