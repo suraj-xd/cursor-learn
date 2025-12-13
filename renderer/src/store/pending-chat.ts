@@ -1,8 +1,7 @@
 "use client"
 
+import { AgentChatMode } from "@/types/agents"
 import { create } from "zustand"
-import type { AgentChatMode } from "@/hooks/use-agent-context"
-
 export type PendingChat = {
   chatId: string
   needsCompletion: boolean
