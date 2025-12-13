@@ -48,6 +48,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          GIT_TAG_NAME: v${{ github.event.inputs.version }}
         run: yarn build:publish
 
       - name: Upload mac artifacts
@@ -93,6 +94,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          GIT_TAG_NAME: v${{ github.event.inputs.version }}
         run: yarn build:publish
 
       - name: Upload Windows artifacts
